@@ -263,6 +263,12 @@ export function App() {
                     <span className="book-card-author">
                       {book.author || 'Author unknown'}
                     </span>
+                    <span className="book-card-meta">
+                      <AvailabilityBadge book={book} />
+                      <span className="book-card-holds">
+                        Holds: {book.holds}
+                      </span>
+                    </span>
                   </button>
                 </li>
               ))}

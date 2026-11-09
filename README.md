@@ -36,6 +36,17 @@ Both commands are polite: requests are sequential, spacing defaults to one
 second and can be changed with `LIBIB_REQUEST_DELAY_MS`. They stop with a clear
 error if Libib returns 403 or 429.
 
+To fill in each sampled book's circulation, description, publication data and
+Libib tags, refresh the per-book details:
+
+```sh
+npm run refresh
+```
+
+This reads one detail request per sampled book with a polite gap (two seconds by
+default) and can be re-run safely. It skips books Libib no longer returns and
+stops with a clear error if Libib refuses a request with 403 or 429.
+
 ## Development
 
 One command runs the API on port 3000 and the Vite UI on port 5173:
@@ -53,8 +64,7 @@ Environment variables:
 | ------------------------ | -------- | -------------------------------------------- |
 | `PORT`                   | `3000`   | API port                                     |
 | `DATA_DIR`               | `./data` | SQLite database and cached covers directory  |
-| `LIBIB_REQUEST_DELAY_MS` | `1000`   | Delay between Libib index requests           |
-
+| `LIBIB_REQUEST_DELAY_MS` | `1000`   | Delay between Libib requests (index; detail refresh defaults to `2000`) |
 ## Scripts
 
 | Script              | What it does                                      |
@@ -65,6 +75,7 @@ Environment variables:
 | `npm run seed`      | Idempotently load fixtures into the database      |
 | `npm run index`     | Refresh the frozen 50-book sample from Libib      |
 | `npm run resample`  | Re-pick the sample and reconcile stored records   |
+| `npm run refresh`   | Refresh circulation and detail for sampled books  |
 | `npm test`          | Run the test suite                                |
 | `npm run typecheck` | Type-check the server and client                  |
 
