@@ -52,6 +52,36 @@ Normal server start also runs the rolling crawler: one sampled book every
 restart. It backs off exponentially on 403/429 while the page keeps serving the
 last good data.
 
+To enrich one book record from Open Library:
+
+```sh
+npm run enrich -- --id <joinId>
+```
+
+To pin a book record to a specific Open Library work, import a CSV with the
+columns `join_id,source,source_id_or_url,note`. `source_id_or_url` accepts a
+bare work id such as `OL1168083W` or a full Open Library URL. The `note` value
+is optional. Invalid rows are reported with their line numbers, and valid rows
+are still imported.
+
+```sh
+npm run overrides:import -- overrides.csv
+```
+
+A match override takes precedence over automatic matching and survives later
+enrichment runs.
+
+To get a worklist of book records that have no enrichment or are still
+unmatched:
+
+```sh
+npm run export:unmatched
+npm run export:unmatched -- --out unmatched.csv
+```
+
+The CSV always has the columns `join_id,title,author`. Without `--out` it is
+printed to stdout.
+
 ## Development
 
 One command runs the API on port 3000 and the Vite UI on port 5173:
@@ -84,6 +114,9 @@ Environment variables:
 | `npm run index`     | Refresh the frozen 50-book sample from Libib      |
 | `npm run resample`  | Re-pick the sample and reconcile stored records   |
 | `npm run refresh`   | Refresh circulation and detail for sampled books  |
+| `npm run enrich`    | Enrich one book record from Open Library          |
+| `npm run overrides:import` | Import match overrides from a CSV          |
+| `npm run export:unmatched` | Export unmatched book records as CSV       |
 | `npm test`          | Run the test suite                                |
 | `npm run typecheck` | Type-check the server and client                  |
 

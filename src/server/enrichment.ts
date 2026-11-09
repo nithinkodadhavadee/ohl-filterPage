@@ -17,6 +17,8 @@ export interface EnrichmentData {
   ratingCount: number | null;
   pageCount: number | null;
   subjects: string[];
+  title?: string | null;
+  authors?: string[];
 }
 
 export interface EnrichmentSearchInput {
@@ -28,10 +30,42 @@ export interface EnrichmentAdapter {
   readonly source: string;
   search(input: EnrichmentSearchInput): Promise<EnrichmentCandidate[]>;
   fetch(candidate: EnrichmentCandidate): Promise<EnrichmentData>;
+  normalizeSourceId?(input: string): string | null;
+}
+
+export class EnrichmentAdapterRegistry {
+  private readonly adapters = new Map<string, EnrichmentAdapter>();
+
+  constructor(adapters: Iterable<EnrichmentAdapter> = []) {
+    for (const adapter of adapters) {
+      this.register(adapter);
+    }
+  }
+
+  register(adapter: EnrichmentAdapter): void {
+    this.adapters.set(adapter.source, adapter);
+  }
+
+  get(source: string): EnrichmentAdapter | undefined {
+    return this.adapters.get(source);
+  }
+
+  get defaultAdapter(): EnrichmentAdapter | undefined {
+    return this.adapters.values().next().value;
+  }
+
+  get size(): number {
+    return this.adapters.size;
+  }
+
+  get sources(): string[] {
+    return [...this.adapters.keys()];
+  }
 }
 
 export interface EnrichBookOptions {
   now?: () => Date;
+  source?: string;
 }
 
 export type EnrichmentOutcome =
@@ -160,11 +194,42 @@ interface BookRow {
   author: string | null;
 }
 
+interface MatchOverrideRow {
+  source: string;
+  source_id: string;
+}
+
 function readBook(db: DatabaseSync, joinId: string): BookRow | undefined {
   const statement = db.prepare(
     'SELECT join_id, title, author FROM book_records WHERE join_id = ?',
   );
   return statement.get(joinId) as unknown as BookRow | undefined;
+}
+
+function readMatchOverride(
+  db: DatabaseSync,
+  joinId: string,
+): MatchOverrideRow | undefined {
+  const statement = db.prepare(
+    'SELECT source, source_id FROM match_overrides WHERE join_id = ?',
+  );
+  return statement.get(joinId) as unknown as MatchOverrideRow | undefined;
+}
+
+function pinnedCandidate(
+  sourceId: string,
+  book: BookRow,
+): EnrichmentCandidate {
+  return {
+    sourceId,
+    title: book.title,
+    authors: book.author ? [book.author] : [],
+    ratingAverage: null,
+    ratingCount: null,
+    pageCount: null,
+    subjects: [],
+    editionCount: null,
+  };
 }
 
 function replaceSubjects(
@@ -267,9 +332,38 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function recordUnmatched(
+  db: DatabaseSync,
+  joinId: string,
+  source: string,
+  enrichedAt: string,
+): void {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    replaceSubjects(db, joinId, []);
+    upsertEnrichment(db, {
+      joinId,
+      source,
+      sourceId: null,
+      matchedTitle: null,
+      matchedAuthor: null,
+      ratingAverage: null,
+      ratingCount: null,
+      pageCount: null,
+      status: 'unmatched',
+      error: null,
+      enrichedAt,
+    });
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export async function enrichBook(
   db: DatabaseSync,
-  adapter: EnrichmentAdapter,
+  adapters: EnrichmentAdapterRegistry,
   joinId: string,
   options: EnrichBookOptions = {},
 ): Promise<EnrichmentOutcome> {
@@ -279,48 +373,60 @@ export async function enrichBook(
   }
 
   const enrichedAt = (options.now?.() ?? new Date()).toISOString();
+  const override = readMatchOverride(db, joinId);
 
-  let candidates: EnrichmentCandidate[];
-  try {
-    candidates = await adapter.search({
+  let adapter: EnrichmentAdapter;
+  let candidate: EnrichmentCandidate;
+  let fromOverride = false;
+
+  if (override) {
+    const pinnedAdapter = adapters.get(override.source);
+    if (!pinnedAdapter) {
+      const detail =
+        `No enrichment adapter is registered for source "${override.source}".`;
+      recordFailure(db, joinId, override.source, detail, enrichedAt);
+      return { status: 'failed', joinId, error: detail };
+    }
+
+    adapter = pinnedAdapter;
+    candidate = pinnedCandidate(override.source_id, book);
+    fromOverride = true;
+  } else {
+    const automatic = options.source
+      ? adapters.get(options.source)
+      : adapters.defaultAdapter;
+    if (!automatic) {
+      throw new Error(
+        options.source
+          ? `No enrichment adapter is registered for source "${options.source}".`
+          : 'No enrichment adapter is configured.',
+      );
+    }
+    adapter = automatic;
+
+    let candidates: EnrichmentCandidate[];
+    try {
+      candidates = await adapter.search({
+        title: book.title,
+        author: book.author,
+      });
+    } catch (error) {
+      const detail = errorMessage(error);
+      recordFailure(db, joinId, adapter.source, detail, enrichedAt);
+      return { status: 'failed', joinId, error: detail };
+    }
+
+    const selected = selectCandidate(candidates, {
       title: book.title,
       author: book.author,
     });
-  } catch (error) {
-    const detail = errorMessage(error);
-    recordFailure(db, joinId, adapter.source, detail, enrichedAt);
-    return { status: 'failed', joinId, error: detail };
-  }
 
-  const candidate = selectCandidate(candidates, {
-    title: book.title,
-    author: book.author,
-  });
-
-  if (!candidate) {
-    db.exec('BEGIN IMMEDIATE');
-    try {
-      replaceSubjects(db, joinId, []);
-      upsertEnrichment(db, {
-        joinId,
-        source: adapter.source,
-        sourceId: null,
-        matchedTitle: null,
-        matchedAuthor: null,
-        ratingAverage: null,
-        ratingCount: null,
-        pageCount: null,
-        status: 'unmatched',
-        error: null,
-        enrichedAt,
-      });
-      db.exec('COMMIT');
-    } catch (error) {
-      db.exec('ROLLBACK');
-      throw error;
+    if (!selected) {
+      recordUnmatched(db, joinId, adapter.source, enrichedAt);
+      return { status: 'unmatched', joinId };
     }
 
-    return { status: 'unmatched', joinId };
+    candidate = selected;
   }
 
   let data: EnrichmentData;
@@ -344,8 +450,12 @@ export async function enrichBook(
       joinId,
       source: adapter.source,
       sourceId: candidate.sourceId,
-      matchedTitle: candidate.title,
-      matchedAuthor: matchedAuthorFor(candidate, book.author),
+      matchedTitle: fromOverride
+        ? (data.title ?? null)
+        : candidate.title,
+      matchedAuthor: fromOverride
+        ? (data.authors?.[0] ?? null)
+        : matchedAuthorFor(candidate, book.author),
       ratingAverage,
       ratingCount,
       pageCount: data.pageCount ?? candidate.pageCount,
