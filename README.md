@@ -47,6 +47,11 @@ This reads one detail request per sampled book with a polite gap (two seconds by
 default) and can be re-run safely. It skips books Libib no longer returns and
 stops with a clear error if Libib refuses a request with 403 or 429.
 
+Normal server start also runs the rolling crawler: one sampled book every
+`CYCLE_DELAY_SECONDS` (default 30), resuming from its persisted cursor after a
+restart. It backs off exponentially on 403/429 while the page keeps serving the
+last good data.
+
 ## Development
 
 One command runs the API on port 3000 and the Vite UI on port 5173:
@@ -60,11 +65,14 @@ the API.
 
 Environment variables:
 
-| Variable                 | Default  | Meaning                                      |
-| ------------------------ | -------- | -------------------------------------------- |
-| `PORT`                   | `3000`   | API port                                     |
-| `DATA_DIR`               | `./data` | SQLite database and cached covers directory  |
-| `LIBIB_REQUEST_DELAY_MS` | `1000`   | Delay between Libib requests (index; detail refresh defaults to `2000`) |
+| Variable                      | Default  | Meaning                                      |
+| ----------------------------- | -------- | -------------------------------------------- |
+| `PORT`                        | `3000`   | API port                                     |
+| `DATA_DIR`                    | `./data` | SQLite database and cached covers directory  |
+| `LIBIB_REQUEST_DELAY_MS`      | `1000`   | Delay between Libib requests (index; detail refresh defaults to `2000`) |
+| `CRAWLER_ENABLED`             | `true`   | Run the rolling crawler on server start      |
+| `CYCLE_DELAY_SECONDS`         | `30`     | Delay between rolling-crawler book reads     |
+| `CRAWLER_MAX_BACKOFF_SECONDS` | `900`    | Upper bound for 403/429 backoff              |
 ## Scripts
 
 | Script              | What it does                                      |
@@ -82,6 +90,7 @@ Environment variables:
 ## API
 
 - `GET /health` → `{ "status": "ok" }`
+- `GET /api/status` → index freshness, crawler cycle progress, backoff and last error
 - `GET /api/books?limit=&offset=` → `{ items, total, nextOffset, meta }`
 - `GET /api/books/:joinId` → one book, or `404`
 - `GET /covers/<file>` → cached cover from `DATA_DIR/covers`

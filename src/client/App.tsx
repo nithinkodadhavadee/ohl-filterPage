@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchBooks } from './api';
+import { fetchBooks, fetchStatus } from './api';
 import type {
   Book,
   BooksResponse,
+  CrawlerStatus,
   SortDirection,
   SortField,
 } from './types';
@@ -19,6 +20,30 @@ function formatDate(value: string | null): string {
 
 function initialOf(title: string): string {
   return title.trim().charAt(0).toUpperCase() || '?';
+}
+
+function crawlerHealth(status: CrawlerStatus | null): {
+  label: string;
+  tone: 'ok' | 'warn' | 'off';
+} {
+  if (!status) return { label: 'Crawler status unknown', tone: 'off' };
+  if (!status.enabled) return { label: 'Crawler paused', tone: 'off' };
+  if (status.backoff.active) {
+    return {
+      label: `Crawler backing off (attempt ${status.backoff.attempt})`,
+      tone: 'warn',
+    };
+  }
+  if (status.lastOutcome === 'error') {
+    return { label: 'Crawler needs attention', tone: 'warn' };
+  }
+  if (status.cycle.total === 0) {
+    return { label: 'Crawler waiting for a sample', tone: 'off' };
+  }
+  return {
+    label: `Crawler ${status.cycle.position}/${status.cycle.total} this cycle`,
+    tone: 'ok',
+  };
 }
 
 function Cover({ book }: { book: Book }) {
@@ -262,6 +287,7 @@ export function App() {
     ensureSeed(parseViewState(window.location.search)),
   );
   const [catalogue, setCatalogue] = useState<BooksResponse | null>(null);
+  const [status, setStatus] = useState<CrawlerStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Book | null>(null);
@@ -289,6 +315,20 @@ export function App() {
       }
     }
   }, [view]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchStatus()
+      .then((crawler) => {
+        if (!cancelled) setStatus(crawler);
+      })
+      .catch(() => {
+        // Status is best-effort; the catalogue must still render.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadToken]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -399,6 +439,7 @@ export function App() {
   };
 
   const books = catalogue?.items ?? [];
+  const health = crawlerHealth(status);
 
   return (
     <div className="page">
@@ -407,10 +448,21 @@ export function App() {
           <p className="eyebrow">Open House Library</p>
           <h1>Catalogue</h1>
         </div>
-        <p className="refresh-note">
-          Catalogue refreshed{' '}
-          <strong>{formatDate(catalogue?.meta.lastIndexRefreshedAt ?? null)}</strong>
-        </p>
+        <div className="header-status">
+          <p className="refresh-note">
+            Catalogue refreshed{' '}
+            <strong>
+              {formatDate(catalogue?.meta.lastIndexRefreshedAt ?? null)}
+            </strong>
+          </p>
+          <p
+            className={`crawler-health is-${health.tone}`}
+            title={status?.lastError ?? undefined}
+          >
+            <span className="crawler-dot" aria-hidden="true" />
+            {health.label}
+          </p>
+        </div>
       </header>
 
       <main>

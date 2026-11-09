@@ -9,13 +9,20 @@ import {
   type SortDirection,
 } from './books.js';
 import { loadConfig } from './config.js';
+import {
+  getCrawlerStatus,
+  startCrawler,
+  type CrawlerHandle,
+} from './crawler.js';
 import { openDatabase } from './db.js';
+import { fetchBookDetail } from './libib-detail.js';
 
 export interface BuildAppOptions {
   dataDir?: string;
   port?: number;
   logger?: boolean;
   serveStatic?: boolean;
+  crawler?: boolean;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -59,6 +66,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const config = loadConfig({ dataDir: options.dataDir, port: options.port });
   const db = openDatabase(config);
   const app = Fastify({ logger: options.logger ?? false });
+  const crawlerEnabled = options.crawler ?? false;
+  let crawler: CrawlerHandle | null = null;
 
   const clientDir = path.resolve(process.cwd(), 'dist/client');
   if (options.serveStatic && existsSync(clientDir)) {
@@ -72,10 +81,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   app.addHook('onClose', async () => {
+    crawler?.stop();
+    await crawler?.done;
     db.close();
   });
 
   app.get('/health', async () => ({ status: 'ok' }));
+
+  app.get('/api/status', async () =>
+    getCrawlerStatus(db, { enabled: crawlerEnabled }),
+  );
 
   app.get<{
     Querystring: {
@@ -114,6 +129,19 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     }
     return book;
   });
+
+  if (crawlerEnabled) {
+    crawler = startCrawler({
+      db,
+      fetchDetail: (joinId) =>
+        fetchBookDetail(joinId, { baseUrl: process.env.LIBIB_BASE_URL }),
+      cycleDelayMs: config.crawlerCycleDelayMs,
+      maxBackoffMs: config.crawlerMaxBackoffMs,
+      logger: options.logger
+        ? (message) => app.log.warn(message)
+        : undefined,
+    });
+  }
 
   return app;
 }
