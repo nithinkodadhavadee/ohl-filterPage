@@ -1,0 +1,9 @@
+{
+  "outcome": "success",
+  "offset": 100,
+  "empty_set_of_items": false,
+  "item-count": 4,
+  "limit": 50,
+  "directory": "<span tabindex=\"0\" data-val=\"A\" class=\"letter active\">A</span>",
+  "item-info": "<h3 class=\"letter-break\">A</h3><div class=\"item cover book \" data-join-id=\"900000001\"><div class=\"cover-wrapper \" data-join-id=\"900000001\"><img src=\"https://d23tvywehq0xq.cloudfront.net/awee42bbc2be4ee507844979e6fa056c19.jpg\" data-join-id=\"900000001\" alt=\"Africa's Tarnished Name\" tabindex=\"0\"><span title=\"book\" class=\"media-type\"></span></div><div class=\"item-title\">Africa&#039;s Tarnished Name</div><div class=\"item-author\">Chinua Achebe</div></div><div class=\"item cover book \" data-join-id=\"900000002\"><div class=\"cover-wrapper \" data-join-id=\"900000002\"><img src=\"https://d23tvywehq0xq.cloudfront.net/34b01a950b97de624cbbe69bb05a0ad2ba8b37fe.jpg\" data-join-id=\"900000002\" alt=\"Kavalier &amp; Clay\" tabindex=\"0\"><span title=\"book\" class=\"media-type\"></span></div><div class=\"item-title\">Kavalier &amp; Clay</div><div class=\"item-author\"></div></div><div class=\"item cover book \" data-join-id=\"900000003\"><div class=\"item-title\">The Absent Color: Poems</div><div class=\"item-author\">a/nil</div></div><div class=\"item cover book \" data-join-id=\"900000004\"><div class=\"cover-wrapper \" data-join-id=\"900000004\"><img src=\"\" data-join-id=\"900000004\" alt=\"A Brief History of Time\" tabindex=\"0\"><span title=\"book\" class=\"media-type\"></span></div><div class=\"item-title\">A Brief History of Time</div><div class=\"item-author\">Stephen Hawking</div></div>"
+}
