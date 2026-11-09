@@ -100,6 +100,72 @@ h1 {
   font-weight: 600;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.search-field input {
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.search-field input:focus-visible,
+.sort-controls select:focus-visible,
+.sort-controls button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sort-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.6rem;
+}
+
+.sort-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.sort-controls select,
+.sort-controls button {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.sort-controls button {
+  cursor: pointer;
+}
+
 .result-count {
   margin: 0 0 0.9rem;
   color: var(--muted);
@@ -423,6 +489,20 @@ h1 {
     flex-direction: row;
     align-items: flex-end;
     justify-content: space-between;
+  }
+
+  .controls {
+    flex-direction: row;
+    align-items: end;
+    gap: 1rem;
+  }
+
+  .search-field {
+    flex: 1;
+  }
+
+  .sort-controls {
+    flex-wrap: nowrap;
   }
 
   .book-grid {

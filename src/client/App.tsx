@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchBooks } from './api';
-import type { Book, BooksResponse } from './types';
+import type {
+  Book,
+  BooksResponse,
+  SortDirection,
+  SortField,
+} from './types';
 
 function formatDate(value: string | null): string {
   if (!value) return 'unknown';
@@ -174,28 +179,155 @@ function BookDetail({ book }: { book: Book }) {
   );
 }
 
+const SORT_FIELDS: SortField[] = [
+  'relevance',
+  'title',
+  'author',
+  'holds',
+  'year',
+  'random',
+];
+
+interface ViewState {
+  q: string;
+  sort: SortField;
+  direction: SortDirection;
+  seed: string | null;
+}
+
+function createSeed(): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function defaultDirection(sort: SortField): SortDirection {
+  return sort === 'relevance' ? 'desc' : 'asc';
+}
+
+function parseViewState(search: string): ViewState {
+  const params = new URLSearchParams(search);
+  const q = (params.get('q') ?? '').trim();
+  const rawSort = params.get('sort');
+  let sort: SortField = q ? 'relevance' : 'title';
+
+  if (rawSort && (SORT_FIELDS as string[]).includes(rawSort)) {
+    sort = rawSort as SortField;
+  }
+  if (!q && sort === 'relevance') sort = 'title';
+
+  const rawDirection = params.get('direction');
+  const direction: SortDirection =
+    rawDirection === 'asc' || rawDirection === 'desc'
+      ? rawDirection
+      : defaultDirection(sort);
+
+  return { q, sort, direction, seed: params.get('seed') };
+}
+
+function ensureSeed(view: ViewState): ViewState {
+  if (view.sort === 'random' && !view.seed) {
+    return { ...view, seed: createSeed() };
+  }
+  return view;
+}
+
+function viewToUrl(view: ViewState): string {
+  const params = new URLSearchParams();
+  if (view.q) params.set('q', view.q);
+  params.set('sort', view.sort);
+  params.set('direction', view.direction);
+  if (view.sort === 'random' && view.seed) params.set('seed', view.seed);
+  const search = params.toString();
+  return search
+    ? `${window.location.pathname}?${search}`
+    : window.location.pathname;
+}
+
 export function App() {
+  const [view, setView] = useState<ViewState>(() =>
+    ensureSeed(parseViewState(window.location.search)),
+  );
   const [catalogue, setCatalogue] = useState<BooksResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Book | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setCatalogue(await fetchBooks());
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load the catalogue');
-    } finally {
-      setLoading(false);
+  const updateView = useCallback(
+    (next: ViewState, options: { push?: boolean } = {}) => {
+      setView(next);
+      const url = viewToUrl(next);
+      if (options.push) {
+        window.history.pushState(null, '', url);
+      } else {
+        window.history.replaceState(null, '', url);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (view.sort === 'random') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('seed') !== view.seed) {
+        window.history.replaceState(null, '', viewToUrl(view));
+      }
     }
+  }, [view]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const next = ensureSeed(parseViewState(window.location.search));
+      setView(next);
+      if (next.sort === 'random') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('seed') !== next.seed) {
+          window.history.replaceState(null, '', viewToUrl(next));
+        }
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    fetchBooks({
+      q: view.q || undefined,
+      sort: view.sort,
+      direction: view.direction,
+      seed: view.sort === 'random' ? view.seed ?? undefined : undefined,
+      limit: 200,
+      offset: 0,
+    })
+      .then((data) => {
+        if (!cancelled) setCatalogue(data);
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : 'Could not load the catalogue',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [view, reloadToken]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -206,6 +338,49 @@ export function App() {
       dialog.close();
     }
   }, [selected]);
+
+  const handleSearchChange = (value: string) => {
+    let sort = view.sort;
+    let direction = view.direction;
+
+    if (value.trim() === '') {
+      if (sort === 'relevance') {
+        sort = 'title';
+        direction = 'asc';
+      }
+    } else if (sort === 'title' || sort === 'relevance') {
+      if (sort !== 'relevance') direction = 'desc';
+      sort = 'relevance';
+    }
+
+    updateView({ ...view, q: value, sort, direction });
+  };
+
+  const handleSortChange = (value: string) => {
+    const sort = value as SortField;
+    let direction = view.direction;
+
+    if (sort === 'relevance') {
+      direction = 'desc';
+    } else if (view.sort === 'relevance') {
+      direction = 'asc';
+    }
+
+    const seed =
+      sort === 'random' && !view.seed ? createSeed() : view.seed;
+
+    updateView({ ...view, sort, direction, seed }, { push: true });
+  };
+
+  const toggleDirection = () => {
+    updateView(
+      {
+        ...view,
+        direction: view.direction === 'asc' ? 'desc' : 'asc',
+      },
+      { push: true },
+    );
+  };
 
   const closeDetail = () => {
     dialogRef.current?.close();
@@ -228,6 +403,47 @@ export function App() {
       </header>
 
       <main>
+        <section className="controls" aria-label="Search and sort">
+          <label className="search-field">
+            <span className="visually-hidden">
+              Search title, author or description
+            </span>
+            <input
+              type="search"
+              value={view.q}
+              onChange={(event) => handleSearchChange(event.target.value)}
+              placeholder="Search title, author or description"
+              autoComplete="off"
+            />
+          </label>
+          <div className="sort-controls">
+            <label>
+              <span>Sort by</span>
+              <select
+                value={view.sort}
+                onChange={(event) => handleSortChange(event.target.value)}
+              >
+                {view.q.trim() ? (
+                  <option value="relevance">Relevance</option>
+                ) : null}
+                <option value="title">Title</option>
+                <option value="author">Author</option>
+                <option value="holds">Holds</option>
+                <option value="year">Year</option>
+                <option value="random">Random</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="direction-toggle"
+              onClick={toggleDirection}
+              aria-label={`Sort ${view.direction === 'asc' ? 'ascending' : 'descending'}`}
+            >
+              {view.direction === 'asc' ? 'Ascending ↑' : 'Descending ↓'}
+            </button>
+          </div>
+        </section>
+
         {loading ? (
           <p className="status" role="status">
             Loading catalogue…
@@ -235,13 +451,22 @@ export function App() {
         ) : error ? (
           <div className="status status-error" role="alert">
             <p>{error}</p>
-            <button type="button" onClick={() => void load()}>
+            <button
+              type="button"
+              onClick={() => setReloadToken((value) => value + 1)}
+            >
               Try again
             </button>
           </div>
         ) : books.length === 0 ? (
           <p className="status">
-            No books yet. Run <code>npm run seed</code> to load fixtures.
+            {view.q.trim() ? (
+              'No books match your search.'
+            ) : (
+              <>
+                No books yet. Run <code>npm run seed</code> to load fixtures.
+              </>
+            )}
           </p>
         ) : (
           <>
