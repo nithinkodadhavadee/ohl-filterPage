@@ -5,6 +5,8 @@ import path from 'node:path';
 import {
   getBook,
   getBooks,
+  getFacets,
+  isHoldBucket,
   type BookSortField,
   type SortDirection,
 } from './books.js';
@@ -62,6 +64,16 @@ function parseDirection(value: string | undefined): SortDirection | undefined {
   return value === 'asc' || value === 'desc' ? value : undefined;
 }
 
+function toArray(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function parseBoolean(value: string | string[] | undefined): boolean {
+  const first = Array.isArray(value) ? value[0] : value;
+  return first === '1' || first === 'true' || first === 'yes';
+}
+
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = loadConfig({ dataDir: options.dataDir, port: options.port });
   const db = openDatabase(config);
@@ -100,6 +112,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       seed?: string;
       limit?: string;
       offset?: string;
+      author?: string;
+      tag?: string | string[];
+      holds?: string | string[];
+      available_only?: string | string[];
     };
   }>('/api/books', async (request) => {
     const limit = parseInteger(
@@ -117,8 +133,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       sort: parseSort(request.query.sort),
       direction: parseDirection(request.query.direction),
       seed: request.query.seed,
+      author: request.query.author,
+      tags: toArray(request.query.tag).filter(Boolean),
+      holds: toArray(request.query.holds).filter(isHoldBucket),
+      availableOnly: parseBoolean(request.query.available_only),
     });
   });
+
+  app.get('/api/facets', async () => getFacets(db));
 
   app.get<{
     Params: { joinId: string };

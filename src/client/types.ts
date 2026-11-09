@@ -35,6 +35,10 @@ export type SortField =
 
 export type SortDirection = 'asc' | 'desc';
 
+export type HoldBucket = '0' | '1-2' | '3-5' | '6+';
+
+export type ViewMode = 'grid' | 'table';
+
 export interface BooksQuery {
   q?: string;
   sort?: SortField;
@@ -42,6 +46,20 @@ export interface BooksQuery {
   seed?: string;
   limit?: number;
   offset?: number;
+  author?: string;
+  tags?: string[];
+  holds?: HoldBucket[];
+  availableOnly?: boolean;
+}
+
+export interface FacetCount {
+  value: string;
+  count: number;
+}
+
+export interface FacetsResponse {
+  tags: FacetCount[];
+  authors: FacetCount[];
 }
 
 export interface BooksResponse {

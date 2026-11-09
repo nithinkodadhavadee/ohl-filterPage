@@ -46,6 +46,14 @@ export type BookSortField =
 
 export type SortDirection = 'asc' | 'desc';
 
+export const HOLD_BUCKETS = ['0', '1-2', '3-5', '6+'] as const;
+
+export type HoldBucket = (typeof HOLD_BUCKETS)[number];
+
+export function isHoldBucket(value: string): value is HoldBucket {
+  return (HOLD_BUCKETS as readonly string[]).includes(value);
+}
+
 export interface BooksQuery {
   limit: number;
   offset: number;
@@ -53,6 +61,20 @@ export interface BooksQuery {
   sort?: BookSortField;
   direction?: SortDirection;
   seed?: string;
+  author?: string;
+  tags?: string[];
+  holds?: HoldBucket[];
+  availableOnly?: boolean;
+}
+
+export interface FacetCount {
+  value: string;
+  count: number;
+}
+
+export interface FacetsResponse {
+  tags: FacetCount[];
+  authors: FacetCount[];
 }
 
 interface BookRow {
@@ -144,6 +166,23 @@ function getSubjects(db: DatabaseSync, joinId: string): string[] {
 function getEnrichment(db: DatabaseSync, joinId: string): EnrichmentRow | undefined {
   const statement = db.prepare('SELECT * FROM enrichment WHERE join_id = ?');
   return row<EnrichmentRow>(statement, joinId);
+}
+
+function holdBucketFor(holds: number): HoldBucket {
+  if (holds <= 0) return '0';
+  if (holds <= 2) return '1-2';
+  if (holds <= 5) return '3-5';
+  return '6+';
+}
+
+function joinIdsWithAnyTag(db: DatabaseSync, tags: string[]): Set<string> {
+  const wanted = new Set(tags.map((tag) => tag.toLowerCase()));
+  const statement = db.prepare('SELECT join_id, tag FROM book_tags');
+  const matches = new Set<string>();
+  for (const entry of rows<{ join_id: string; tag: string }>(statement)) {
+    if (wanted.has(entry.tag.toLowerCase())) matches.add(entry.join_id);
+  }
+  return matches;
 }
 
 function toBook(db: DatabaseSync, record: BookRow): Book {
@@ -484,7 +523,37 @@ export function getBooks(db: DatabaseSync, options: BooksQuery): BooksPage {
   const terms = tokenize(queryText);
   const hasSearch = terms.length > 0;
 
-  const allRecords = rows<BookRow>(db.prepare('SELECT * FROM book_records'));
+  const authorFilter = options.author?.trim().toLowerCase() ?? '';
+  const tagFilter = (options.tags ?? []).filter(Boolean);
+  const holdFilter = options.holds ?? [];
+  const onlyAvailable = options.availableOnly === true;
+  const selectedTagIds =
+    tagFilter.length > 0 ? joinIdsWithAnyTag(db, tagFilter) : null;
+
+  const allRecords = rows<BookRow>(db.prepare('SELECT * FROM book_records')).filter(
+    (record) => {
+      if (
+        authorFilter &&
+        !record.author?.toLowerCase().includes(authorFilter)
+      ) {
+        return false;
+      }
+      if (
+        holdFilter.length > 0 &&
+        !holdFilter.includes(holdBucketFor(record.holds))
+      ) {
+        return false;
+      }
+      if (
+        onlyAvailable &&
+        !(Math.max(0, record.copies - record.out) > record.holds)
+      ) {
+        return false;
+      }
+      if (selectedTagIds && !selectedTagIds.has(record.join_id)) return false;
+      return true;
+    },
+  );
 
   let records = allRecords;
   let relevance: Map<string, number> | null = null;
@@ -530,4 +599,26 @@ export function getBook(db: DatabaseSync, joinId: string): Book | null {
   const statement = db.prepare('SELECT * FROM book_records WHERE join_id = ?');
   const record = row<BookRow>(statement, joinId);
   return record ? toBook(db, record) : null;
+}
+
+export function getFacets(db: DatabaseSync): FacetsResponse {
+  const tags = rows<FacetCount>(
+    db.prepare(`
+      SELECT tag AS value, COUNT(DISTINCT join_id) AS count
+      FROM book_tags
+      GROUP BY tag
+      ORDER BY tag COLLATE NOCASE
+    `),
+  );
+  const authors = rows<FacetCount>(
+    db.prepare(`
+      SELECT author AS value, COUNT(*) AS count
+      FROM book_records
+      WHERE author IS NOT NULL AND TRIM(author) <> ''
+      GROUP BY author
+      ORDER BY author COLLATE NOCASE
+    `),
+  );
+
+  return { tags, authors };
 }

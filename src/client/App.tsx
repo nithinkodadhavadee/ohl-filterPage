@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchBooks, fetchStatus } from './api';
+import { fetchBooks, fetchFacets, fetchStatus } from './api';
 import type {
   Book,
   BooksResponse,
   CrawlerStatus,
+  FacetsResponse,
+  HoldBucket,
   SortDirection,
   SortField,
+  ViewMode,
 } from './types';
 
 function formatDate(value: string | null): string {
@@ -224,11 +227,74 @@ const SORT_FIELDS: SortField[] = [
   'random',
 ];
 
+const HOLD_BUCKETS: HoldBucket[] = ['0', '1-2', '3-5', '6+'];
+
+const HOLD_BUCKET_LABELS: Record<HoldBucket, string> = {
+  '0': 'None (0)',
+  '1-2': '1–2',
+  '3-5': '3–5',
+  '6+': '6 or more',
+};
+
+function BookTable({
+  books,
+  onSelect,
+}: {
+  books: Book[];
+  onSelect: (book: Book) => void;
+}) {
+  return (
+    <table className="book-table">
+      <thead>
+        <tr>
+          <th scope="col">Title</th>
+          <th scope="col">Author</th>
+          <th scope="col">Holds</th>
+          <th scope="col">Availability</th>
+          <th scope="col">Copies / Out</th>
+        </tr>
+      </thead>
+      <tbody>
+        {books.map((book) => (
+          <tr key={book.joinId}>
+            <td className="cell-title">
+              <button
+                type="button"
+                className="table-title-button"
+                onClick={() => onSelect(book)}
+                aria-label={`${book.title}${book.author ? ` by ${book.author}` : ''}`}
+              >
+                <span className="table-cover">
+                  <Cover book={book} />
+                </span>
+                <span className="table-title-text">{book.title}</span>
+              </button>
+            </td>
+            <td data-label="Author">{book.author || 'Author unknown'}</td>
+            <td data-label="Holds">{book.holds}</td>
+            <td data-label="Availability">
+              <AvailabilityBadge book={book} />
+            </td>
+            <td data-label="Copies / Out">
+              {book.copies} / {book.out}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 interface ViewState {
   q: string;
   sort: SortField;
   direction: SortDirection;
   seed: string | null;
+  author: string;
+  tags: string[];
+  holds: HoldBucket[];
+  availableOnly: boolean;
+  view: ViewMode;
 }
 
 function createSeed(): string {
@@ -260,7 +326,38 @@ function parseViewState(search: string): ViewState {
       ? rawDirection
       : defaultDirection(sort);
 
-  return { q, sort, direction, seed: params.get('seed') };
+  const tags = [...new Set(params.getAll('tag').filter(Boolean))];
+  const holds = [
+    ...new Set(
+      params
+        .getAll('holds')
+        .filter((value): value is HoldBucket =>
+          (HOLD_BUCKETS as string[]).includes(value),
+        ),
+    ),
+  ];
+
+  return {
+    q,
+    sort,
+    direction,
+    seed: params.get('seed'),
+    author: params.get('author') ?? '',
+    tags,
+    holds,
+    availableOnly:
+      params.get('available') === '1' || params.get('available') === 'true',
+    view: params.get('view') === 'table' ? 'table' : 'grid',
+  };
+}
+
+function activeFilterCount(view: ViewState): number {
+  return (
+    (view.author.trim() ? 1 : 0) +
+    view.tags.length +
+    view.holds.length +
+    (view.availableOnly ? 1 : 0)
+  );
 }
 
 function ensureSeed(view: ViewState): ViewState {
@@ -276,6 +373,11 @@ function viewToUrl(view: ViewState): string {
   params.set('sort', view.sort);
   params.set('direction', view.direction);
   if (view.sort === 'random' && view.seed) params.set('seed', view.seed);
+  if (view.author.trim()) params.set('author', view.author.trim());
+  for (const tag of view.tags) params.append('tag', tag);
+  for (const bucket of view.holds) params.append('holds', bucket);
+  if (view.availableOnly) params.set('available', '1');
+  if (view.view === 'table') params.set('view', 'table');
   const search = params.toString();
   return search
     ? `${window.location.pathname}?${search}`
@@ -288,6 +390,7 @@ export function App() {
   );
   const [catalogue, setCatalogue] = useState<BooksResponse | null>(null);
   const [status, setStatus] = useState<CrawlerStatus | null>(null);
+  const [facets, setFacets] = useState<FacetsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Book | null>(null);
@@ -331,6 +434,20 @@ export function App() {
   }, [reloadToken]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetchFacets()
+      .then((data) => {
+        if (!cancelled) setFacets(data);
+      })
+      .catch(() => {
+        // Facets are best-effort; search and the grid still work without them.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadToken]);
+
+  useEffect(() => {
     const onPopState = () => {
       const next = ensureSeed(parseViewState(window.location.search));
       setView(next);
@@ -356,6 +473,10 @@ export function App() {
       sort: view.sort,
       direction: view.direction,
       seed: view.sort === 'random' ? view.seed ?? undefined : undefined,
+      author: view.author.trim() || undefined,
+      tags: view.tags,
+      holds: view.holds,
+      availableOnly: view.availableOnly,
       limit: 200,
       offset: 0,
     })
@@ -433,6 +554,39 @@ export function App() {
     );
   };
 
+  const handleAuthorChange = (author: string) => {
+    updateView({ ...view, author });
+  };
+
+  const toggleTag = (tag: string) => {
+    const tags = view.tags.includes(tag)
+      ? view.tags.filter((entry) => entry !== tag)
+      : [...view.tags, tag];
+    updateView({ ...view, tags }, { push: true });
+  };
+
+  const toggleHold = (bucket: HoldBucket) => {
+    const holds = view.holds.includes(bucket)
+      ? view.holds.filter((entry) => entry !== bucket)
+      : [...view.holds, bucket];
+    updateView({ ...view, holds }, { push: true });
+  };
+
+  const toggleAvailableOnly = () => {
+    updateView({ ...view, availableOnly: !view.availableOnly }, { push: true });
+  };
+
+  const clearFilters = () => {
+    updateView(
+      { ...view, author: '', tags: [], holds: [], availableOnly: false },
+      { push: true },
+    );
+  };
+
+  const setViewMode = (next: ViewMode) => {
+    if (next !== view.view) updateView({ ...view, view: next }, { push: true });
+  };
+
   const closeDetail = () => {
     dialogRef.current?.close();
     setSelected(null);
@@ -440,6 +594,7 @@ export function App() {
 
   const books = catalogue?.items ?? [];
   const health = crawlerHealth(status);
+  const filterCount = activeFilterCount(view);
 
   return (
     <div className="page">
@@ -507,6 +662,83 @@ export function App() {
           </div>
         </section>
 
+        <section className="filters" aria-label="Filters">
+          <div className="filters-header">
+            <h2 className="filters-title">Filters</h2>
+            {filterCount > 0 ? (
+              <div className="filters-summary">
+                <span>
+                  {filterCount} active {filterCount === 1 ? 'filter' : 'filters'}
+                </span>
+                <button
+                  type="button"
+                  className="clear-filters"
+                  onClick={clearFilters}
+                >
+                  Clear all
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          <label className="filter-field">
+            <span>Author</span>
+            <input
+              type="search"
+              value={view.author}
+              onChange={(event) => handleAuthorChange(event.target.value)}
+              placeholder="Filter by author"
+              autoComplete="off"
+            />
+          </label>
+
+          <fieldset className="filter-group">
+            <legend>Libib tags</legend>
+            {facets && facets.tags.length > 0 ? (
+              <div className="filter-options">
+                {facets.tags.map((tag) => (
+                  <label className="filter-option" key={tag.value}>
+                    <input
+                      type="checkbox"
+                      checked={view.tags.includes(tag.value)}
+                      onChange={() => toggleTag(tag.value)}
+                    />
+                    <span>{tag.value}</span>
+                    <span className="filter-option-count">{tag.count}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="muted filter-empty">No tags yet.</p>
+            )}
+          </fieldset>
+
+          <fieldset className="filter-group">
+            <legend>Holds</legend>
+            <div className="filter-options">
+              {HOLD_BUCKETS.map((bucket) => (
+                <label className="filter-option" key={bucket}>
+                  <input
+                    type="checkbox"
+                    checked={view.holds.includes(bucket)}
+                    onChange={() => toggleHold(bucket)}
+                  />
+                  <span>{HOLD_BUCKET_LABELS[bucket]}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <label className="filter-toggle">
+            <input
+              type="checkbox"
+              checked={view.availableOnly}
+              onChange={toggleAvailableOnly}
+            />
+            <span>Available only</span>
+          </label>
+        </section>
+
         {loading ? (
           <p className="status" role="status">
             Loading catalogue…
@@ -523,8 +755,8 @@ export function App() {
           </div>
         ) : books.length === 0 ? (
           <p className="status">
-            {view.q.trim() ? (
-              'No books match your search.'
+            {view.q.trim() || filterCount > 0 ? (
+              'No books match your search and filters.'
             ) : (
               <>
                 No books yet. Run <code>npm run seed</code> to load fixtures.
@@ -533,52 +765,74 @@ export function App() {
           </p>
         ) : (
           <>
-            <p className="result-count">
-              {catalogue?.total ?? 0}{' '}
-              {(catalogue?.total ?? 0) === 1 ? 'book' : 'books'}
-            </p>
-            <ul className="book-grid">
-              {books.map((book) => (
-                <li key={book.joinId}>
-                  <button
-                    type="button"
-                    className="book-card"
-                    onClick={() => setSelected(book)}
-                    aria-label={`${book.title}${book.author ? ` by ${book.author}` : ''}`}
-                  >
-                    <Cover book={book} />
-                    <span className="book-card-title">{book.title}</span>
-                    <span className="book-card-author">
-                      {book.author || 'Author unknown'}
-                    </span>
-                    <span className="book-card-meta">
-                      <AvailabilityBadge book={book} />
-                      <span className="book-card-holds">
-                        Holds: {book.holds}
+            <div className="results-toolbar">
+              <p className="result-count">
+                {catalogue?.total ?? 0}{' '}
+                {(catalogue?.total ?? 0) === 1 ? 'book' : 'books'}
+              </p>
+              <div className="view-toggle" role="group" aria-label="View mode">
+                <button
+                  type="button"
+                  aria-pressed={view.view === 'grid'}
+                  onClick={() => setViewMode('grid')}
+                >
+                  Grid
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={view.view === 'table'}
+                  onClick={() => setViewMode('table')}
+                >
+                  Table
+                </button>
+              </div>
+            </div>
+            {view.view === 'table' ? (
+              <BookTable books={books} onSelect={setSelected} />
+            ) : (
+              <ul className="book-grid">
+                {books.map((book) => (
+                  <li key={book.joinId}>
+                    <button
+                      type="button"
+                      className="book-card"
+                      onClick={() => setSelected(book)}
+                      aria-label={`${book.title}${book.author ? ` by ${book.author}` : ''}`}
+                    >
+                      <Cover book={book} />
+                      <span className="book-card-title">{book.title}</span>
+                      <span className="book-card-author">
+                        {book.author || 'Author unknown'}
                       </span>
-                    </span>
-                    {book.rating ? (
-                      <span className="book-card-rating">
-                        ★ {book.rating.average.toFixed(1)}
-                        <span className="book-card-rating-count">
-                          {' '}
-                          ({book.rating.count})
+                      <span className="book-card-meta">
+                        <AvailabilityBadge book={book} />
+                        <span className="book-card-holds">
+                          Holds: {book.holds}
                         </span>
-                        {book.rating.lowSample ? (
-                          <span className="sample-badge sample-badge-inline">
-                            Low sample
+                      </span>
+                      {book.rating ? (
+                        <span className="book-card-rating">
+                          ★ {book.rating.average.toFixed(1)}
+                          <span className="book-card-rating-count">
+                            {' '}
+                            ({book.rating.count})
                           </span>
-                        ) : null}
-                      </span>
-                    ) : isUnmatched(book) ? (
-                      <span className="book-card-rating is-unknown">
-                        rating/subjects unknown
-                      </span>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
+                          {book.rating.lowSample ? (
+                            <span className="sample-badge sample-badge-inline">
+                              Low sample
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : isUnmatched(book) ? (
+                        <span className="book-card-rating is-unknown">
+                          rating/subjects unknown
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </main>
