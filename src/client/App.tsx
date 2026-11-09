@@ -842,11 +842,16 @@ export function App() {
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (selected && !dialog.open) {
-      dialog.showModal();
-    } else if (!selected && dialog.open) {
-      dialog.close();
+    if (selected) {
+      if (!dialog.open) dialog.showModal();
+      const resetScroll = () => {
+        dialog.scrollTop = 0;
+      };
+      resetScroll();
+      const frame = window.requestAnimationFrame(resetScroll);
+      return () => window.cancelAnimationFrame(frame);
     }
+    if (dialog.open) dialog.close();
   }, [selected]);
 
   const handleSearchChange = (value: string) => {
