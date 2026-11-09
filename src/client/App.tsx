@@ -6,10 +6,10 @@ import {
   SORT_FIELDS,
   UNMATCHED_FILTERS,
   defaultDirectionFor,
+  hasNoEnrichmentData,
   isHoldBucket,
   isSortField,
-  isUnmatchedBook,
-  isUnmatchedFilter,
+  normalizeUnmatchedFilter,
   type Book,
   type BooksResponse,
   type FacetsResponse,
@@ -19,9 +19,9 @@ import {
   type UnmatchedFilter,
 } from '../shared/contract';
 import {
-  BADGE_EXPLANATIONS,
-  BADGE_LABELS,
-  ENRICHMENT_HINT_LABELS,
+  BADGE_COPY,
+  ENRICHMENT_HINT_COPY,
+  badgeExplanation,
   enrichmentHintText,
   type BadgeKind,
   type EnrichmentHintField,
@@ -97,29 +97,20 @@ function Cover({ book }: { book: Book }) {
   );
 }
 
+type ExplanationMode =
+  | { type: 'badge'; badge: BadgeKind }
+  | { type: 'info' };
+
 interface ExplanationProps {
   text: string;
-  idPrefix: string;
   label: ReactNode;
-  variant: 'badge' | 'info';
-  triggerClassName: string;
-  triggerAriaLabel?: string;
-  tapToOpen?: boolean;
-  keyboardFocusOnly?: boolean;
+  mode: ExplanationMode;
+  ariaLabel?: string;
 }
 
-function Explanation({
-  text,
-  idPrefix,
-  label,
-  variant,
-  triggerClassName,
-  triggerAriaLabel,
-  tapToOpen = false,
-  keyboardFocusOnly = false,
-}: ExplanationProps) {
+function Explanation({ text, label, mode, ariaLabel }: ExplanationProps) {
   const generatedId = useId();
-  const tooltipId = `${idPrefix}-${generatedId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const tooltipId = `explanation-${generatedId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
 
@@ -138,20 +129,6 @@ function Explanation({
     };
   }, [open]);
 
-  const handleFocus = (event: FocusEvent<HTMLElement>) => {
-    if (keyboardFocusOnly) {
-      const target = event.target as HTMLElement;
-      let focusVisible = true;
-      try {
-        focusVisible = target.matches(':focus-visible');
-      } catch {
-        focusVisible = true;
-      }
-      if (!focusVisible) return;
-    }
-    setOpen(true);
-  };
-
   const handleBlur = (event: FocusEvent<HTMLElement>) => {
     const next = event.relatedTarget as Node | null;
     if (!next || !wrapperRef.current?.contains(next)) {
@@ -163,18 +140,10 @@ function Explanation({
     if (event.key === 'Escape') setOpen(false);
   };
 
-  const triggerProps = {
-    className: triggerClassName,
-    'aria-describedby': tooltipId,
-    onFocus: handleFocus,
-    onBlur: handleBlur,
-    onKeyDown: handleKeyDown,
-  };
-
   return (
     <span
       ref={wrapperRef}
-      className={`explanation-wrapper explanation-wrapper-${variant}`}
+      className={`explanation-wrapper explanation-wrapper-${mode.type}`}
       onPointerEnter={(event) => {
         if (event.pointerType !== 'touch') setOpen(true);
       }}
@@ -182,20 +151,20 @@ function Explanation({
         if (event.pointerType !== 'touch') setOpen(false);
       }}
     >
-      {tapToOpen ? (
-        <button
-          type="button"
-          {...triggerProps}
-          aria-label={triggerAriaLabel}
-          onClick={() => setOpen(true)}
-        >
-          {label}
-        </button>
-      ) : (
-        <span {...triggerProps} tabIndex={0}>
-          {label}
-        </span>
-      )}
+      <button
+        type="button"
+        className={
+          mode.type === 'badge' ? `badge badge-${mode.badge}` : 'info-hint'
+        }
+        aria-describedby={tooltipId}
+        aria-label={ariaLabel}
+        onFocus={() => setOpen(true)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onClick={() => setOpen(true)}
+      >
+        {label}
+      </button>
       <span
         id={tooltipId}
         role="tooltip"
@@ -207,63 +176,33 @@ function Explanation({
   );
 }
 
-type BadgeContext = 'grid' | 'table' | 'detail';
-
-function BookBadge({
-  kind,
-  context,
-}: {
-  kind: BadgeKind;
-  context: BadgeContext;
-}) {
+function Badge({ book, kind }: { book: Book; kind: BadgeKind }) {
   return (
     <Explanation
-      idPrefix={`badge-${kind}`}
-      text={BADGE_EXPLANATIONS[kind]}
-      label={BADGE_LABELS[kind]}
-      variant="badge"
-      triggerClassName={`badge badge-${kind}`}
-      tapToOpen={context === 'detail'}
-      keyboardFocusOnly={context !== 'detail'}
+      label={BADGE_COPY[kind]}
+      text={badgeExplanation(kind, {
+        status: book.enrichmentStatus,
+        source: book.enrichmentSource,
+      })}
+      mode={{ type: 'badge', badge: kind }}
     />
   );
 }
 
-function AvailabilityBadge({
-  book,
-  context,
-}: {
-  book: Book;
-  context: BadgeContext;
-}) {
+function BookBadges({ book }: { book: Book }) {
+  const kinds: BadgeKind[] = [
+    book.available ? 'available' : 'unavailable',
+  ];
+  if (book.rating?.lowSample) kinds.push('low-sample');
+  if (hasNoEnrichmentData(book.enrichmentStatus)) kinds.push('unmatched');
+
   return (
-    <BookBadge
-      kind={book.available ? 'available' : 'unavailable'}
-      context={context}
-    />
+    <>
+      {kinds.map((kind) => (
+        <Badge key={kind} book={book} kind={kind} />
+      ))}
+    </>
   );
-}
-
-function LowSampleBadge({
-  book,
-  context,
-}: {
-  book: Book;
-  context: BadgeContext;
-}) {
-  if (!book.rating?.lowSample) return null;
-  return <BookBadge kind="low-sample" context={context} />;
-}
-
-function UnmatchedBadge({
-  book,
-  context,
-}: {
-  book: Book;
-  context: BadgeContext;
-}) {
-  if (!isUnmatchedBook(book)) return null;
-  return <BookBadge kind="unmatched" context={context} />;
 }
 
 function EnrichmentHint({
@@ -273,17 +212,14 @@ function EnrichmentHint({
   field: EnrichmentHintField;
   source: string | null;
 }) {
-  const label = ENRICHMENT_HINT_LABELS[field];
+  const label = ENRICHMENT_HINT_COPY[field];
 
   return (
     <Explanation
-      idPrefix={`hint-${field}`}
       text={enrichmentHintText(field, source)}
       label="i"
-      triggerAriaLabel={`About ${label}`}
-      variant="info"
-      triggerClassName="info-hint"
-      tapToOpen
+      ariaLabel={`About ${label}`}
+      mode={{ type: 'info' }}
     />
   );
 }
@@ -352,9 +288,7 @@ function BookDetail({
         <p className="detail-author">{book.author || 'Author unknown'}</p>
 
         <div className="detail-badges">
-          <AvailabilityBadge book={book} context="detail" />
-          <LowSampleBadge book={book} context="detail" />
-          <UnmatchedBadge book={book} context="detail" />
+          <BookBadges book={book} />
         </div>
 
         <section className="detail-section" aria-labelledby="detail-circulation">
@@ -394,7 +328,9 @@ function BookDetail({
         >
           <div className="detail-heading-row">
             <h3 id="detail-page-count">Page count</h3>
-            <EnrichmentHint field="pageCount" source={book.enrichmentSource} />
+            {book.enrichmentSource ? (
+              <EnrichmentHint field="pageCount" source={book.enrichmentSource} />
+            ) : null}
           </div>
           <p>
             {book.pageCount !== null
@@ -411,7 +347,9 @@ function BookDetail({
         <section className="detail-section" aria-labelledby="detail-rating">
           <div className="detail-heading-row">
             <h3 id="detail-rating">Rating</h3>
-            <EnrichmentHint field="rating" source={book.enrichmentSource} />
+            {book.enrichmentSource ? (
+              <EnrichmentHint field="rating" source={book.enrichmentSource} />
+            ) : null}
           </div>
           <p>
             <RatingBadge
@@ -442,7 +380,9 @@ function BookDetail({
         <section className="detail-section" aria-labelledby="detail-subjects">
           <div className="detail-heading-row">
             <h3 id="detail-subjects">Subjects</h3>
-            <EnrichmentHint field="subjects" source={book.enrichmentSource} />
+            {book.enrichmentSource ? (
+              <EnrichmentHint field="subjects" source={book.enrichmentSource} />
+            ) : null}
           </div>
           {book.subjects.length > 0 ? (
             <ul className="chip-list">
@@ -487,7 +427,7 @@ const HOLD_BUCKET_LABELS: Record<HoldBucket, string> = {
   '6+': '6 or more',
 };
 
-const UNMATCHED_FILTER_LABELS: Record<UnmatchedFilter, string> = {
+const UNMATCHED_FILTER_OPTIONS: Record<UnmatchedFilter, string> = {
   all: 'All books',
   hide: 'Hide unmatched',
   only: 'Only unmatched',
@@ -534,14 +474,21 @@ function BookTable({
             <td data-label="Rating">
               <span className="badge-group">
                 <RatingBadge book={book} precision={2} emptyLabel="—" />
-                <LowSampleBadge book={book} context="table" />
+                {book.rating?.lowSample ? (
+                  <Badge book={book} kind="low-sample" />
+                ) : null}
               </span>
             </td>
             <td data-label="Holds">{book.holds}</td>
             <td data-label="Availability">
               <span className="badge-group">
-                <AvailabilityBadge book={book} context="table" />
-                <UnmatchedBadge book={book} context="table" />
+                <Badge
+                  book={book}
+                  kind={book.available ? 'available' : 'unavailable'}
+                />
+                {hasNoEnrichmentData(book.enrichmentStatus) ? (
+                  <Badge book={book} kind="unmatched" />
+                ) : null}
               </span>
             </td>
             <td data-label="Subjects">
@@ -620,9 +567,7 @@ function parseViewState(search: string): ViewState {
         .filter((value): value is HoldBucket => isHoldBucket(value)),
     ),
   ];
-  const rawUnmatched = params.get('unmatched');
-  const unmatched: UnmatchedFilter =
-    rawUnmatched && isUnmatchedFilter(rawUnmatched) ? rawUnmatched : 'all';
+  const unmatched = normalizeUnmatchedFilter(params.get('unmatched'));
 
   return {
     q,
@@ -702,6 +647,25 @@ function readBookParam(search: string): string | null {
   return value ? value : null;
 }
 
+function useStoredToggle(
+  key: string,
+  fallback: boolean,
+): [boolean, () => void] {
+  const [value, setValue] = useState<boolean>(() =>
+    readStoredBoolean(browserSessionStorage(), key, fallback),
+  );
+
+  const toggle = useCallback(() => {
+    setValue((current) => {
+      const next = !current;
+      writeStoredBoolean(browserSessionStorage(), key, next);
+      return next;
+    });
+  }, [key]);
+
+  return [value, toggle];
+}
+
 export function App() {
   const [view, setView] = useState<ViewState>(() =>
     ensureSeed(parseViewState(window.location.search)),
@@ -712,11 +676,13 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Book | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState<boolean>(() =>
-    readStoredBoolean(browserSessionStorage(), FILTER_PANEL_STORAGE_KEY, true),
+  const [filtersOpen, toggleFilters] = useStoredToggle(
+    FILTER_PANEL_STORAGE_KEY,
+    true,
   );
-  const [subjectsOpen, setSubjectsOpen] = useState<boolean>(() =>
-    readStoredBoolean(browserSessionStorage(), SUBJECTS_FACET_STORAGE_KEY, false),
+  const [subjectsOpen, toggleSubjects] = useStoredToggle(
+    SUBJECTS_FACET_STORAGE_KEY,
+    false,
   );
   const [reloadToken, setReloadToken] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -831,7 +797,7 @@ export function App() {
       includeLowSample: view.includeLowSample,
       pagesMin: parseOptionalNumber(view.pagesMin),
       pagesMax: parseOptionalNumber(view.pagesMax),
-      unmatched: view.unmatched === 'all' ? undefined : view.unmatched,
+      unmatched: view.unmatched,
       limit: 200,
       offset: 0,
     })
@@ -955,27 +921,19 @@ export function App() {
     updateView({ ...view, unmatched }, { push: true });
   };
 
-  const toggleFilters = () => {
-    const next = !filtersOpen;
-    setFiltersOpen(next);
-    writeStoredBoolean(browserSessionStorage(), FILTER_PANEL_STORAGE_KEY, next);
+  const clearFilterGroup = (isEmpty: boolean, next: Partial<ViewState>) => {
+    if (isEmpty) return;
+    updateView({ ...view, ...next }, { push: true });
   };
 
-  const toggleSubjects = () => {
-    const next = !subjectsOpen;
-    setSubjectsOpen(next);
-    writeStoredBoolean(browserSessionStorage(), SUBJECTS_FACET_STORAGE_KEY, next);
-  };
+  const clearRating = () =>
+    clearFilterGroup(!view.ratingMin.trim(), { ratingMin: '' });
 
-  const clearRating = () => {
-    if (!view.ratingMin.trim()) return;
-    updateView({ ...view, ratingMin: '' }, { push: true });
-  };
-
-  const clearPages = () => {
-    if (!view.pagesMin.trim() && !view.pagesMax.trim()) return;
-    updateView({ ...view, pagesMin: '', pagesMax: '' }, { push: true });
-  };
+  const clearPages = () =>
+    clearFilterGroup(!view.pagesMin.trim() && !view.pagesMax.trim(), {
+      pagesMin: '',
+      pagesMax: '',
+    });
 
   const toggleHold = (bucket: HoldBucket) => {
     const holds = view.holds.includes(bucket)
@@ -1308,7 +1266,7 @@ export function App() {
                       checked={view.unmatched === value}
                       onChange={() => handleUnmatchedChange(value)}
                     />
-                    <span>{UNMATCHED_FILTER_LABELS[value]}</span>
+                    <span>{UNMATCHED_FILTER_OPTIONS[value]}</span>
                   </label>
                 ))}
               </div>
@@ -1379,32 +1337,35 @@ export function App() {
               <ul className="book-grid">
                 {books.map((book) => (
                   <li key={book.joinId}>
-                    <button
-                      type="button"
-                      className="book-card"
-                      onClick={() => setSelected(book)}
-                      aria-label={`${book.title}${book.author ? ` by ${book.author}` : ''}`}
-                    >
-                      <Cover book={book} />
-                      <span className="book-card-title">{book.title}</span>
-                      <span className="book-card-author">
-                        {book.author || 'Author unknown'}
-                      </span>
-                      <span className="book-card-meta">
-                        <AvailabilityBadge book={book} context="grid" />
-                        <LowSampleBadge book={book} context="grid" />
-                        <UnmatchedBadge book={book} context="grid" />
-                        <span className="book-card-holds">
-                          Holds: {book.holds}
-                        </span>
-                      </span>
-                      <RatingBadge
-                        book={book}
-                        precision={1}
-                        className="book-card-rating"
-                        emptyLabel={null}
+                    <div className="book-card">
+                      <button
+                        type="button"
+                        className="book-card-open"
+                        onClick={() => setSelected(book)}
+                        aria-label={`${book.title}${book.author ? ` by ${book.author}` : ''}`}
                       />
-                    </button>
+                      <div className="book-card-body">
+                        <Cover book={book} />
+                        <span className="book-card-title">{book.title}</span>
+                        <span className="book-card-author">
+                          {book.author || 'Author unknown'}
+                        </span>
+                        <span className="book-card-meta">
+                          <span className="book-card-badges">
+                            <BookBadges book={book} />
+                          </span>
+                          <span className="book-card-holds">
+                            Holds: {book.holds}
+                          </span>
+                        </span>
+                        <RatingBadge
+                          book={book}
+                          precision={1}
+                          className="book-card-rating"
+                          emptyLabel={null}
+                        />
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>

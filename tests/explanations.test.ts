@@ -1,22 +1,52 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BADGE_EXPLANATIONS,
+  BADGE_COPY,
+  badgeExplanation,
   enrichmentHintText,
 } from '../src/shared/explanations.js';
 
-describe('badge explanations', () => {
-  it('uses the fixed copy for each badge', () => {
-    expect(BADGE_EXPLANATIONS.available).toBe(
+describe('badge copy', () => {
+  it('names each badge', () => {
+    expect(BADGE_COPY.available).toBe('Available');
+    expect(BADGE_COPY.unavailable).toBe('Unavailable');
+    expect(BADGE_COPY['low-sample']).toBe('Low sample');
+    expect(BADGE_COPY.unmatched).toBe('Unmatched');
+  });
+
+  it('uses the fixed copy for the availability and sample badges', () => {
+    expect(badgeExplanation('available')).toBe(
       'At least one copy is on the shelf and not already claimed by the hold queue.',
     );
-    expect(BADGE_EXPLANATIONS.unavailable).toBe(
+    expect(badgeExplanation('unavailable')).toBe(
       'Every copy is on loan, or the hold queue has claimed the copies on the shelf.',
     );
-    expect(BADGE_EXPLANATIONS['low-sample']).toBe(
+    expect(badgeExplanation('low-sample')).toBe(
       'Based on fewer than five ratings, so the average can be misleading.',
     );
-    expect(BADGE_EXPLANATIONS.unmatched).toBe(
+  });
+
+  it('names the source that found no matching record', () => {
+    expect(
+      badgeExplanation('unmatched', {
+        status: 'unmatched',
+        source: 'Open Library',
+      }),
+    ).toBe(
       'No matching record was found in Open Library, so Rating, Subjects and page count are unavailable.',
+    );
+  });
+
+  it('does not claim there was no match when enrichment failed or is pending', () => {
+    expect(
+      badgeExplanation('unmatched', {
+        status: 'failed',
+        source: 'openlibrary',
+      }),
+    ).toBe(
+      'Enrichment from Open Library has not completed, so Rating, Subjects and page count are unavailable.',
+    );
+    expect(badgeExplanation('unmatched', { status: null })).toBe(
+      'Enrichment has not completed yet, so Rating, Subjects and page count are unavailable.',
     );
   });
 });

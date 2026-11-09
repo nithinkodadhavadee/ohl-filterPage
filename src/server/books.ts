@@ -1,8 +1,8 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
 import {
   defaultDirectionFor,
+  hasNoEnrichmentData,
   isSortField,
-  isUnmatchedBook,
   type Book,
   type BooksQuery,
   type BooksResponse,
@@ -14,6 +14,7 @@ import {
   type SortDirection,
   type SortField,
 } from '../shared/contract.js';
+import { enrichmentSourceLabel } from '../shared/enrichment.js';
 
 export type {
   Book,
@@ -57,10 +58,6 @@ interface EnrichmentRow {
 }
 
 const LIBIB_BASE_URL = 'https://www.libib.com/u/openhouselibrary';
-
-const ENRICHMENT_SOURCE_LABELS: Record<string, string> = {
-  openlibrary: 'Open Library',
-};
 
 type Statement = ReturnType<DatabaseSync['prepare']>;
 
@@ -120,15 +117,7 @@ function enrichmentStatusFor(
 function enrichmentSourceFor(
   enrichment: EnrichmentRow | undefined,
 ): string | null {
-  const source = enrichment?.source?.trim();
-  if (!source) return null;
-
-  const known = ENRICHMENT_SOURCE_LABELS[source.toLowerCase()];
-  if (known) return known;
-
-  return source
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return enrichmentSourceLabel(enrichment?.source);
 }
 
 function getTags(db: DatabaseSync, joinId: string): string[] {
@@ -571,11 +560,10 @@ export function getBooks(
       }
 
       if (unmatchedFilter !== 'all') {
-        const unmatched = isUnmatchedBook({
-          enrichmentStatus: enrichmentStatusFor(
-            enrichmentByJoinId.get(record.join_id),
-          ),
-        });
+        const status = enrichmentStatusFor(
+          enrichmentByJoinId.get(record.join_id),
+        );
+        const unmatched = hasNoEnrichmentData(status);
         if (unmatchedFilter === 'hide' && unmatched) return false;
         if (unmatchedFilter === 'only' && !unmatched) return false;
       }

@@ -63,7 +63,7 @@ A book record with a confirmed match to a record in an enrichment source.
 _Avoid_: Matched book
 
 **Unmatched book**:
-A book record with no confirmed enrichment match. It is shown as "rating/subjects unknown".
+A book record whose enrichment search returned no confirmed match. It is shown as "rating/subjects unknown". A record that failed or has not been enriched yet is not unmatched; it simply has no enrichment data.
 _Avoid_: Failed book, missing book
 
 **Subject**:

@@ -90,6 +90,12 @@ export function isUnmatchedFilter(value: string): value is UnmatchedFilter {
   return (UNMATCHED_FILTERS as readonly string[]).includes(value);
 }
 
+export function normalizeUnmatchedFilter(
+  value: string | null | undefined,
+): UnmatchedFilter {
+  return value && isUnmatchedFilter(value) ? value : 'all';
+}
+
 export interface BooksQuery {
   limit?: number;
   offset?: number;
@@ -129,8 +135,14 @@ export interface FacetsResponse {
   subjects: FacetCount[];
 }
 
+export function hasNoEnrichmentData(
+  status: EnrichmentStatus | null,
+): boolean {
+  return status !== 'enriched';
+}
+
 export function isUnmatchedBook(
   book: Pick<Book, 'enrichmentStatus'>,
 ): boolean {
-  return book.enrichmentStatus !== 'enriched';
+  return book.enrichmentStatus === 'unmatched';
 }

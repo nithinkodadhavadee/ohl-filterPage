@@ -1,44 +1,21 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildApp } from '../src/server/app.js';
-import type { BooksResponse, FacetsResponse } from '../src/server/books.js';
-import { loadConfig } from '../src/server/config.js';
-import { openDatabase } from '../src/server/db.js';
-import { seedDatabase } from '../src/server/seed.js';
+import type { FacetsResponse } from '../src/server/books.js';
+import { createSeededApp, titles, type SeededApp } from './seeded-app.js';
 
+let seeded: SeededApp;
 let app: FastifyInstance;
-let dataDir: string;
 
 beforeEach(async () => {
-  dataDir = mkdtempSync(path.join(tmpdir(), 'open-house-library-enrichment-'));
-  const config = loadConfig({ dataDir });
-  const db = openDatabase(config);
-  seedDatabase(db, { coversDir: config.coversDir });
-  db.close();
-
-  app = await buildApp({ dataDir, serveStatic: false });
+  seeded = await createSeededApp('enrichment');
+  app = seeded.app;
 });
 
 afterEach(async () => {
-  await app.close();
-  rmSync(dataDir, { recursive: true, force: true });
+  await seeded.close();
 });
 
-async function listBooks(query = ''): Promise<BooksResponse> {
-  const response = await app.inject({
-    method: 'GET',
-    url: `/api/books${query}`,
-  });
-  expect(response.statusCode).toBe(200);
-  return response.json() as BooksResponse;
-}
-
-function titles(body: BooksResponse): string[] {
-  return body.books.map((book) => book.title);
-}
+const listBooks = (query = '') => seeded.listBooks(query);
 
 describe('subject filter', () => {
   it('matches any of the selected subjects as OR', async () => {
