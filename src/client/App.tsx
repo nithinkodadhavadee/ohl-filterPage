@@ -38,6 +38,10 @@ function Cover({ book }: { book: Book }) {
   );
 }
 
+function isUnmatched(book: Book): boolean {
+  return book.rating === null && book.subjects.length === 0;
+}
+
 function AvailabilityBadge({ book }: { book: Book }) {
   return (
     <span
@@ -49,7 +53,7 @@ function AvailabilityBadge({ book }: { book: Book }) {
 }
 
 function BookDetail({ book }: { book: Book }) {
-  const unmatched = book.rating === null && book.subjects.length === 0;
+  const unmatched = isUnmatched(book);
 
   return (
     <div className="detail-layout">
@@ -120,6 +124,11 @@ function BookDetail({ book }: { book: Book }) {
                 ({book.rating.count}{' '}
                 {book.rating.count === 1 ? 'rating' : 'ratings'})
               </span>
+              {book.rating.lowSample ? (
+                <span className="sample-badge sample-badge-inline">
+                  Low sample
+                </span>
+              ) : null}
             </p>
           ) : (
             <p className="muted">No rating yet.</p>
@@ -143,7 +152,9 @@ function BookDetail({ book }: { book: Book }) {
 
         <section className="detail-section" aria-labelledby="detail-subjects">
           <h3 id="detail-subjects">Subjects</h3>
-          {book.subjects.length > 0 ? (
+          {unmatched ? (
+            <p className="unknown-note">rating/subjects unknown</p>
+          ) : book.subjects.length > 0 ? (
             <ul className="chip-list">
               {book.subjects.map((subject) => (
                 <li key={subject} className="chip chip-subject">
@@ -269,6 +280,24 @@ export function App() {
                         Holds: {book.holds}
                       </span>
                     </span>
+                    {book.rating ? (
+                      <span className="book-card-rating">
+                        ★ {book.rating.average.toFixed(1)}
+                        <span className="book-card-rating-count">
+                          {' '}
+                          ({book.rating.count})
+                        </span>
+                        {book.rating.lowSample ? (
+                          <span className="sample-badge sample-badge-inline">
+                            Low sample
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : isUnmatched(book) ? (
+                      <span className="book-card-rating is-unknown">
+                        rating/subjects unknown
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               ))}

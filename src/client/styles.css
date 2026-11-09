@@ -215,6 +215,27 @@ h1 {
   font-weight: 600;
 }
 
+.book-card-rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.book-card-rating-count {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.book-card-rating.is-unknown {
+  color: var(--muted);
+  font-weight: 500;
+  font-style: italic;
+}
+
 .detail-dialog {
   width: min(880px, calc(100vw - 1.5rem));
   max-height: min(90vh, 900px);
@@ -301,6 +322,12 @@ h1 {
 .sample-badge {
   color: var(--unavailable);
   background: var(--unavailable-bg);
+}
+
+.sample-badge-inline {
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.68rem;
 }
 
 .detail-section {
