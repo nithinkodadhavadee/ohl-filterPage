@@ -67,4 +67,25 @@ describe('unmatched signal', () => {
     expect(pending?.enrichmentStatus).toBeNull();
     expect(isUnmatchedBook(pending!)).toBe(true);
   });
+
+  it('filters on enrichment status, not on missing rating or subjects', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/books?unmatched=hide',
+    });
+    const hidden = response.json() as BooksResponse;
+    expect(hidden.books.map((book) => book.joinId)).toEqual(['matched-empty']);
+    expect(hidden.books[0].rating).toBeNull();
+    expect(hidden.books[0].subjects).toEqual([]);
+
+    const onlyResponse = await app.inject({
+      method: 'GET',
+      url: '/api/books?unmatched=only',
+    });
+    const only = onlyResponse.json() as BooksResponse;
+    expect(only.books.map((book) => book.joinId).sort()).toEqual([
+      'pending',
+      'unmatched',
+    ]);
+  });
 });
