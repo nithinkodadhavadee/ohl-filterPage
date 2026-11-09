@@ -108,7 +108,7 @@ describe('GET /api/books', () => {
       available: true,
       pageCount: 328,
       rating: { average: 4.28, count: 449, lowSample: false },
-      libibUrl: 'https://www.libib.com/u/openhouselibrary?id=167806440',
+      libibUrl: 'https://www.libib.com/u/openhouselibrary?solo=167806440',
     });
     expect(book.coverUrl).toBe('/covers/nineteen-eighty-four.svg');
     expect(book.tags).toEqual(['classics', 'fiction']);
@@ -118,6 +118,20 @@ describe('GET /api/books', () => {
       'Totalitarianism',
     ]);
     expect(book.refreshedAt).toBe('2026-11-10T09:00:00.000Z');
+  });
+
+  it('links every book with the encoded solo permalink', async () => {
+    const body = await listBooks();
+
+    expect(body.books).toHaveLength(6);
+    for (const book of body.books) {
+      expect(book.libibUrl).toBe(
+        `https://www.libib.com/u/openhouselibrary?solo=${encodeURIComponent(
+          book.joinId,
+        )}`,
+      );
+      expect(book.libibUrl).not.toContain('?id=');
+    }
   });
 
   it('derives availability from copies, out and holds', async () => {
