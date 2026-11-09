@@ -2,7 +2,11 @@ import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 
 const config = loadConfig();
-const app = await buildApp({ serveStatic: true, logger: true });
+const app = await buildApp({
+  serveStatic: true,
+  logger: true,
+  crawler: config.crawlerEnabled,
+});
 
 const shutdown = async (signal: string): Promise<void> => {
   app.log.info(`Received ${signal}, shutting down`);

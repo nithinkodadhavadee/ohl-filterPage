@@ -19,7 +19,7 @@ const SAMPLE_KEY = 'sample_join_ids';
 const defaultSleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-function readSampleIds(db: DatabaseSync): string[] | null {
+export function getSampleJoinIds(db: DatabaseSync): string[] | null {
   const statement = db.prepare('SELECT value FROM crawl_state WHERE key = ?');
   const result = statement.get(SAMPLE_KEY) as { value: string | null } | undefined;
   if (!result?.value) return null;
@@ -33,7 +33,7 @@ function readSampleIds(db: DatabaseSync): string[] | null {
   }
 }
 
-function persistDetail(
+export function persistBookDetail(
   db: DatabaseSync,
   detail: LibibDetail,
   refreshedAt: string,
@@ -112,7 +112,7 @@ export async function refreshBookDetails(
   db: DatabaseSync,
   deps: BookRefreshDeps,
 ): Promise<BookRefreshResult> {
-  const sampleIds = readSampleIds(db);
+  const sampleIds = getSampleJoinIds(db);
   if (sampleIds === null || sampleIds.length === 0) {
     return { sampleSize: 0, refreshed: 0, skipped: 0 };
   }
@@ -133,7 +133,7 @@ export async function refreshBookDetails(
       continue;
     }
 
-    persistDetail(db, detail, refreshedAt);
+    persistBookDetail(db, detail, refreshedAt);
     refreshed += 1;
   }
 

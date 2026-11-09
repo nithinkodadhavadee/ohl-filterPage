@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchBooks } from './api';
-import type { Book, BooksResponse } from './types';
+import { fetchBooks, fetchStatus } from './api';
+import type { Book, BooksResponse, CrawlerStatus } from './types';
 
 function formatDate(value: string | null): string {
   if (!value) return 'unknown';
@@ -14,6 +14,30 @@ function formatDate(value: string | null): string {
 
 function initialOf(title: string): string {
   return title.trim().charAt(0).toUpperCase() || '?';
+}
+
+function crawlerHealth(status: CrawlerStatus | null): {
+  label: string;
+  tone: 'ok' | 'warn' | 'off';
+} {
+  if (!status) return { label: 'Crawler status unknown', tone: 'off' };
+  if (!status.enabled) return { label: 'Crawler paused', tone: 'off' };
+  if (status.backoff.active) {
+    return {
+      label: `Crawler backing off (attempt ${status.backoff.attempt})`,
+      tone: 'warn',
+    };
+  }
+  if (status.lastOutcome === 'error') {
+    return { label: 'Crawler needs attention', tone: 'warn' };
+  }
+  if (status.cycle.total === 0) {
+    return { label: 'Crawler waiting for a sample', tone: 'off' };
+  }
+  return {
+    label: `Crawler ${status.cycle.position}/${status.cycle.total} this cycle`,
+    tone: 'ok',
+  };
 }
 
 function Cover({ book }: { book: Book }) {
@@ -176,6 +200,7 @@ function BookDetail({ book }: { book: Book }) {
 
 export function App() {
   const [catalogue, setCatalogue] = useState<BooksResponse | null>(null);
+  const [status, setStatus] = useState<CrawlerStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Book | null>(null);
@@ -185,7 +210,12 @@ export function App() {
     setLoading(true);
     setError(null);
     try {
-      setCatalogue(await fetchBooks());
+      const [books, crawler] = await Promise.all([
+        fetchBooks(),
+        fetchStatus().catch(() => null),
+      ]);
+      setCatalogue(books);
+      setStatus(crawler);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load the catalogue');
     } finally {
@@ -213,6 +243,7 @@ export function App() {
   };
 
   const books = catalogue?.items ?? [];
+  const health = crawlerHealth(status);
 
   return (
     <div className="page">
@@ -221,10 +252,21 @@ export function App() {
           <p className="eyebrow">Open House Library</p>
           <h1>Catalogue</h1>
         </div>
-        <p className="refresh-note">
-          Catalogue refreshed{' '}
-          <strong>{formatDate(catalogue?.meta.lastIndexRefreshedAt ?? null)}</strong>
-        </p>
+        <div className="header-status">
+          <p className="refresh-note">
+            Catalogue refreshed{' '}
+            <strong>
+              {formatDate(catalogue?.meta.lastIndexRefreshedAt ?? null)}
+            </strong>
+          </p>
+          <p
+            className={`crawler-health is-${health.tone}`}
+            title={status?.lastError ?? undefined}
+          >
+            <span className="crawler-dot" aria-hidden="true" />
+            {health.label}
+          </p>
+        </div>
       </header>
 
       <main>
