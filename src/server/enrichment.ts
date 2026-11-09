@@ -1,6 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { decodeHtmlEntities } from './html-entities.js';
 
+export const DEFAULT_ENRICH_DELAY_MS = 1000;
+
 export interface EnrichmentCandidate {
   sourceId: string;
   title: string;
@@ -56,10 +58,6 @@ export class EnrichmentAdapterRegistry {
 
   get size(): number {
     return this.adapters.size;
-  }
-
-  get sources(): string[] {
-    return [...this.adapters.keys()];
   }
 }
 

@@ -137,7 +137,7 @@ describe('availability derivation over HTTP', () => {
     expect(body.total).toBe(CASES.length);
 
     for (const entry of CASES) {
-      expect(byTitle(body.items, entry.title)).toMatchObject({
+      expect(byTitle(body.books, entry.title)).toMatchObject({
         copies: entry.copies,
         out: entry.out,
         holds: entry.holds,

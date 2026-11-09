@@ -7,8 +7,10 @@ import { createAdapterRegistry } from './adapters.js';
 import { loadConfig } from './config.js';
 import { cacheCover } from './covers.js';
 import { openDatabase } from './db.js';
-import { parseEnrichDelay } from './enrich-cli.js';
-import { DEFAULT_INDEX_DELAY_MS, fetchCatalogueIndex } from './libib-index.js';
+import { parseDelayMs } from './delay.js';
+import { DEFAULT_ENRICH_DELAY_MS } from './enrichment.js';
+import { createLibibAdapter } from './libib.js';
+import { DEFAULT_INDEX_DELAY_MS } from './libib-index.js';
 
 type Mode = CatalogueIndexResult['mode'];
 
@@ -17,33 +19,29 @@ function parseMode(value: string | undefined): Mode {
   throw new Error('Usage: index-cli <index|resample>');
 }
 
-function parseDelay(value: string | undefined): number {
-  if (!value) return DEFAULT_INDEX_DELAY_MS;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0
-    ? parsed
-    : DEFAULT_INDEX_DELAY_MS;
-}
-
 const mode = parseMode(process.argv[2]);
 const config = loadConfig();
 const db = openDatabase(config);
-const delayMs = parseDelay(process.env.LIBIB_REQUEST_DELAY_MS);
+const delayMs = parseDelayMs(
+  process.env.LIBIB_REQUEST_DELAY_MS,
+  DEFAULT_INDEX_DELAY_MS,
+);
+const libib = createLibibAdapter({
+  baseUrl: process.env.LIBIB_BASE_URL,
+  libraryId: process.env.LIBIB_LIBRARY_ID,
+  indexDelayMs: delayMs,
+});
 
 try {
   const deps = {
-    fetchIndex: () =>
-      fetchCatalogueIndex({
-        baseUrl: process.env.LIBIB_BASE_URL,
-        libraryId: process.env.LIBIB_LIBRARY_ID,
-        delayMs,
-      }),
+    fetchIndex: () => libib.fetchIndex(),
     cacheCover: (item: Parameters<typeof cacheCover>[0]) =>
       cacheCover(item, { coversDir: config.coversDir }),
     adapters: createAdapterRegistry(),
-    enrichDelayMs: parseEnrichDelay(
+    enrichDelayMs: parseDelayMs(
       process.env.ENRICH_REQUEST_DELAY_MS ??
         process.env.LIBIB_REQUEST_DELAY_MS,
+      DEFAULT_ENRICH_DELAY_MS,
     ),
     logger: (message: string) => console.error(message),
   };

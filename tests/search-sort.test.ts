@@ -37,7 +37,7 @@ async function listBooks(query = ''): Promise<BooksResponse> {
 }
 
 function titles(body: BooksResponse): string[] {
-  return body.items.map((book) => book.title);
+  return body.books.map((book) => book.title);
 }
 
 describe('free-text search', () => {

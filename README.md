@@ -143,6 +143,7 @@ Environment variables:
 
 - `GET /health` → `{ "status": "ok" }`
 - `GET /api/status` → index freshness, crawler cycle progress, backoff and last error
-- `GET /api/books?limit=&offset=` → `{ items, total, nextOffset, meta }`
+- `GET /api/books?limit=&offset=` → `{ books, total, nextOffset, meta }`
 - `GET /api/books/:joinId` → one book, or `404`
+- `GET /api/facets` → `{ tags, authors, subjects }` with counts
 - `GET /covers/<file>` → cached cover from `DATA_DIR/covers`
