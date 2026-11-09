@@ -224,6 +224,8 @@ const SORT_FIELDS: SortField[] = [
   'author',
   'holds',
   'year',
+  'rating',
+  'pageCount',
   'random',
 ];
 
@@ -249,8 +251,11 @@ function BookTable({
         <tr>
           <th scope="col">Title</th>
           <th scope="col">Author</th>
+          <th scope="col">Rating</th>
           <th scope="col">Holds</th>
           <th scope="col">Availability</th>
+          <th scope="col">Subjects</th>
+          <th scope="col">Pages</th>
           <th scope="col">Copies / Out</th>
         </tr>
       </thead>
@@ -271,9 +276,40 @@ function BookTable({
               </button>
             </td>
             <td data-label="Author">{book.author || 'Author unknown'}</td>
+            <td data-label="Rating">
+              {book.rating ? (
+                <span className="rating-cell">
+                  ★ {book.rating.average.toFixed(2)}
+                  <span className="muted"> ({book.rating.count})</span>
+                  {book.rating.lowSample ? (
+                    <span className="sample-badge sample-badge-inline">
+                      Low sample
+                    </span>
+                  ) : null}
+                </span>
+              ) : isUnmatched(book) ? (
+                <span className="muted">rating/subjects unknown</span>
+              ) : (
+                <span className="muted">—</span>
+              )}
+            </td>
             <td data-label="Holds">{book.holds}</td>
             <td data-label="Availability">
               <AvailabilityBadge book={book} />
+            </td>
+            <td data-label="Subjects">
+              {book.subjects.length > 0 ? (
+                book.subjects.join(', ')
+              ) : (
+                <span className="muted">—</span>
+              )}
+            </td>
+            <td data-label="Pages">
+              {book.pageCount !== null ? (
+                book.pageCount
+              ) : (
+                <span className="muted">—</span>
+              )}
             </td>
             <td data-label="Copies / Out">
               {book.copies} / {book.out}
@@ -292,8 +328,13 @@ interface ViewState {
   seed: string | null;
   author: string;
   tags: string[];
+  subjects: string[];
   holds: HoldBucket[];
   availableOnly: boolean;
+  ratingMin: string;
+  includeLowSample: boolean;
+  pagesMin: string;
+  pagesMax: string;
   view: ViewMode;
 }
 
@@ -327,6 +368,7 @@ function parseViewState(search: string): ViewState {
       : defaultDirection(sort);
 
   const tags = [...new Set(params.getAll('tag').filter(Boolean))];
+  const subjects = [...new Set(params.getAll('subject').filter(Boolean))];
   const holds = [
     ...new Set(
       params
@@ -344,9 +386,16 @@ function parseViewState(search: string): ViewState {
     seed: params.get('seed'),
     author: params.get('author') ?? '',
     tags,
+    subjects,
     holds,
     availableOnly:
       params.get('available') === '1' || params.get('available') === 'true',
+    ratingMin: params.get('rating_min') ?? '',
+    includeLowSample:
+      params.get('include_low_sample') === '1' ||
+      params.get('include_low_sample') === 'true',
+    pagesMin: params.get('pages_min') ?? '',
+    pagesMax: params.get('pages_max') ?? '',
     view: params.get('view') === 'table' ? 'table' : 'grid',
   };
 }
@@ -355,9 +404,21 @@ function activeFilterCount(view: ViewState): number {
   return (
     (view.author.trim() ? 1 : 0) +
     view.tags.length +
+    view.subjects.length +
     view.holds.length +
-    (view.availableOnly ? 1 : 0)
+    (view.availableOnly ? 1 : 0) +
+    (view.ratingMin.trim() ? 1 : 0) +
+    (view.includeLowSample ? 1 : 0) +
+    (view.pagesMin.trim() ? 1 : 0) +
+    (view.pagesMax.trim() ? 1 : 0)
   );
+}
+
+function numberOrUndefined(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function ensureSeed(view: ViewState): ViewState {
@@ -375,8 +436,13 @@ function viewToUrl(view: ViewState): string {
   if (view.sort === 'random' && view.seed) params.set('seed', view.seed);
   if (view.author.trim()) params.set('author', view.author.trim());
   for (const tag of view.tags) params.append('tag', tag);
+  for (const subject of view.subjects) params.append('subject', subject);
   for (const bucket of view.holds) params.append('holds', bucket);
   if (view.availableOnly) params.set('available', '1');
+  if (view.ratingMin.trim()) params.set('rating_min', view.ratingMin.trim());
+  if (view.includeLowSample) params.set('include_low_sample', '1');
+  if (view.pagesMin.trim()) params.set('pages_min', view.pagesMin.trim());
+  if (view.pagesMax.trim()) params.set('pages_max', view.pagesMax.trim());
   if (view.view === 'table') params.set('view', 'table');
   const search = params.toString();
   return search
@@ -475,8 +541,13 @@ export function App() {
       seed: view.sort === 'random' ? view.seed ?? undefined : undefined,
       author: view.author.trim() || undefined,
       tags: view.tags,
+      subjects: view.subjects,
       holds: view.holds,
       availableOnly: view.availableOnly,
+      ratingMin: numberOrUndefined(view.ratingMin),
+      includeLowSample: view.includeLowSample,
+      pagesMin: numberOrUndefined(view.pagesMin),
+      pagesMax: numberOrUndefined(view.pagesMax),
       limit: 200,
       offset: 0,
     })
@@ -565,6 +636,32 @@ export function App() {
     updateView({ ...view, tags }, { push: true });
   };
 
+  const toggleSubject = (subject: string) => {
+    const subjects = view.subjects.includes(subject)
+      ? view.subjects.filter((entry) => entry !== subject)
+      : [...view.subjects, subject];
+    updateView({ ...view, subjects }, { push: true });
+  };
+
+  const handleRatingMinChange = (ratingMin: string) => {
+    updateView({ ...view, ratingMin });
+  };
+
+  const toggleLowSample = () => {
+    updateView(
+      { ...view, includeLowSample: !view.includeLowSample },
+      { push: true },
+    );
+  };
+
+  const handlePagesMinChange = (pagesMin: string) => {
+    updateView({ ...view, pagesMin });
+  };
+
+  const handlePagesMaxChange = (pagesMax: string) => {
+    updateView({ ...view, pagesMax });
+  };
+
   const toggleHold = (bucket: HoldBucket) => {
     const holds = view.holds.includes(bucket)
       ? view.holds.filter((entry) => entry !== bucket)
@@ -578,7 +675,18 @@ export function App() {
 
   const clearFilters = () => {
     updateView(
-      { ...view, author: '', tags: [], holds: [], availableOnly: false },
+      {
+        ...view,
+        author: '',
+        tags: [],
+        subjects: [],
+        holds: [],
+        availableOnly: false,
+        ratingMin: '',
+        includeLowSample: false,
+        pagesMin: '',
+        pagesMax: '',
+      },
       { push: true },
     );
   };
@@ -646,8 +754,10 @@ export function App() {
                 ) : null}
                 <option value="title">Title</option>
                 <option value="author">Author</option>
+                <option value="rating">Rating</option>
                 <option value="holds">Holds</option>
                 <option value="year">Year</option>
+                <option value="pageCount">Page count</option>
                 <option value="random">Random</option>
               </select>
             </label>
@@ -714,6 +824,27 @@ export function App() {
           </fieldset>
 
           <fieldset className="filter-group">
+            <legend>Subjects</legend>
+            {facets && facets.subjects.length > 0 ? (
+              <div className="filter-options filter-options-subjects">
+                {facets.subjects.map((subject) => (
+                  <label className="filter-option" key={subject.value}>
+                    <input
+                      type="checkbox"
+                      checked={view.subjects.includes(subject.value)}
+                      onChange={() => toggleSubject(subject.value)}
+                    />
+                    <span>{subject.value}</span>
+                    <span className="filter-option-count">{subject.count}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="muted filter-empty">No subjects yet.</p>
+            )}
+          </fieldset>
+
+          <fieldset className="filter-group">
             <legend>Holds</legend>
             <div className="filter-options">
               {HOLD_BUCKETS.map((bucket) => (
@@ -726,6 +857,62 @@ export function App() {
                   <span>{HOLD_BUCKET_LABELS[bucket]}</span>
                 </label>
               ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="filter-group">
+            <legend>Minimum rating</legend>
+            <div className="filter-options filter-range">
+              <label className="filter-field">
+                <span>Rating at least</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  value={view.ratingMin}
+                  onChange={(event) =>
+                    handleRatingMinChange(event.target.value)
+                  }
+                  placeholder="Any"
+                />
+              </label>
+              <label className="filter-toggle">
+                <input
+                  type="checkbox"
+                  checked={view.includeLowSample}
+                  onChange={toggleLowSample}
+                />
+                <span>Include low-sample ratings</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset className="filter-group">
+            <legend>Page count</legend>
+            <div className="filter-options filter-range">
+              <label className="filter-field">
+                <span>At least</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={view.pagesMin}
+                  onChange={(event) => handlePagesMinChange(event.target.value)}
+                  placeholder="Any"
+                />
+              </label>
+              <label className="filter-field">
+                <span>At most</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={view.pagesMax}
+                  onChange={(event) => handlePagesMaxChange(event.target.value)}
+                  placeholder="Any"
+                />
+              </label>
             </div>
           </fieldset>
 

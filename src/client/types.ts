@@ -31,6 +31,8 @@ export type SortField =
   | 'author'
   | 'holds'
   | 'year'
+  | 'rating'
+  | 'pageCount'
   | 'random';
 
 export type SortDirection = 'asc' | 'desc';
@@ -48,8 +50,13 @@ export interface BooksQuery {
   offset?: number;
   author?: string;
   tags?: string[];
+  subjects?: string[];
   holds?: HoldBucket[];
   availableOnly?: boolean;
+  ratingMin?: number;
+  includeLowSample?: boolean;
+  pagesMin?: number;
+  pagesMax?: number;
 }
 
 export interface FacetCount {
@@ -60,6 +67,7 @@ export interface FacetCount {
 export interface FacetsResponse {
   tags: FacetCount[];
   authors: FacetCount[];
+  subjects: FacetCount[];
 }
 
 export interface BooksResponse {
