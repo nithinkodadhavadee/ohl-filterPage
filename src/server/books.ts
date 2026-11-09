@@ -42,6 +42,8 @@ export type BookSortField =
   | 'author'
   | 'holds'
   | 'year'
+  | 'rating'
+  | 'pageCount'
   | 'random';
 
 export type SortDirection = 'asc' | 'desc';
@@ -63,8 +65,13 @@ export interface BooksQuery {
   seed?: string;
   author?: string;
   tags?: string[];
+  subjects?: string[];
   holds?: HoldBucket[];
   availableOnly?: boolean;
+  ratingMin?: number;
+  includeLowSample?: boolean;
+  pagesMin?: number;
+  pagesMax?: number;
 }
 
 export interface FacetCount {
@@ -75,6 +82,7 @@ export interface FacetCount {
 export interface FacetsResponse {
   tags: FacetCount[];
   authors: FacetCount[];
+  subjects: FacetCount[];
 }
 
 interface BookRow {
@@ -175,14 +183,28 @@ function holdBucketFor(holds: number): HoldBucket {
   return '6+';
 }
 
-function joinIdsWithAnyTag(db: DatabaseSync, tags: string[]): Set<string> {
-  const wanted = new Set(tags.map((tag) => tag.toLowerCase()));
-  const statement = db.prepare('SELECT join_id, tag FROM book_tags');
+function joinIdsMatching(
+  db: DatabaseSync,
+  table: 'book_tags' | 'book_subjects',
+  column: 'tag' | 'subject',
+  values: string[],
+): Set<string> {
+  const wanted = new Set(values.map((value) => value.toLowerCase()));
+  const statement = db.prepare(`SELECT join_id, ${column} AS value FROM ${table}`);
   const matches = new Set<string>();
-  for (const entry of rows<{ join_id: string; tag: string }>(statement)) {
-    if (wanted.has(entry.tag.toLowerCase())) matches.add(entry.join_id);
+  for (const entry of rows<{ join_id: string; value: string }>(statement)) {
+    if (wanted.has(entry.value.toLowerCase())) matches.add(entry.join_id);
   }
   return matches;
+}
+
+function getEnrichmentMap(db: DatabaseSync): Map<string, EnrichmentRow> {
+  const statement = db.prepare('SELECT * FROM enrichment');
+  const map = new Map<string, EnrichmentRow>();
+  for (const entry of rows<EnrichmentRow>(statement)) {
+    map.set(entry.join_id, entry);
+  }
+  return map;
 }
 
 function toBook(db: DatabaseSync, record: BookRow): Book {
@@ -242,6 +264,8 @@ const SORT_FIELDS = new Set<BookSortField>([
   'author',
   'holds',
   'year',
+  'rating',
+  'pageCount',
   'random',
 ]);
 
@@ -439,6 +463,7 @@ function seededHash(seed: string, value: string): number {
 function sortValue(
   record: BookRow,
   field: BookSortField,
+  enrichmentByJoinId: Map<string, EnrichmentRow>,
 ): string | number | null {
   switch (field) {
     case 'title':
@@ -449,6 +474,10 @@ function sortValue(
       return record.holds;
     case 'year':
       return record.year;
+    case 'rating':
+      return ratingFor(enrichmentByJoinId.get(record.join_id))?.average ?? null;
+    case 'pageCount':
+      return enrichmentByJoinId.get(record.join_id)?.page_count ?? null;
     default:
       return null;
   }
@@ -461,6 +490,7 @@ function compareRecords(
   direction: SortDirection,
   relevance: Map<string, number> | null,
   seed: string,
+  enrichmentByJoinId: Map<string, EnrichmentRow>,
 ): number {
   if (sort === 'relevance') {
     const left = relevance?.get(a.join_id) ?? 0;
@@ -478,8 +508,8 @@ function compareRecords(
     return compareTitle(a, b);
   }
 
-  const left = sortValue(a, sort);
-  const right = sortValue(b, sort);
+  const left = sortValue(a, sort, enrichmentByJoinId);
+  const right = sortValue(b, sort, enrichmentByJoinId);
 
   if (left === null && right !== null) return 1;
   if (right === null && left !== null) return -1;
@@ -525,10 +555,22 @@ export function getBooks(db: DatabaseSync, options: BooksQuery): BooksPage {
 
   const authorFilter = options.author?.trim().toLowerCase() ?? '';
   const tagFilter = (options.tags ?? []).filter(Boolean);
+  const subjectFilter = (options.subjects ?? []).filter(Boolean);
   const holdFilter = options.holds ?? [];
   const onlyAvailable = options.availableOnly === true;
+  const ratingMin = options.ratingMin;
+  const includeLowSample = options.includeLowSample === true;
+  const pagesMin = options.pagesMin ?? null;
+  const pagesMax = options.pagesMax ?? null;
+  const enrichmentByJoinId = getEnrichmentMap(db);
   const selectedTagIds =
-    tagFilter.length > 0 ? joinIdsWithAnyTag(db, tagFilter) : null;
+    tagFilter.length > 0
+      ? joinIdsMatching(db, 'book_tags', 'tag', tagFilter)
+      : null;
+  const selectedSubjectIds =
+    subjectFilter.length > 0
+      ? joinIdsMatching(db, 'book_subjects', 'subject', subjectFilter)
+      : null;
 
   const allRecords = rows<BookRow>(db.prepare('SELECT * FROM book_records')).filter(
     (record) => {
@@ -551,6 +593,25 @@ export function getBooks(db: DatabaseSync, options: BooksQuery): BooksPage {
         return false;
       }
       if (selectedTagIds && !selectedTagIds.has(record.join_id)) return false;
+      if (selectedSubjectIds && !selectedSubjectIds.has(record.join_id)) {
+        return false;
+      }
+
+      if (ratingMin !== undefined) {
+        const rating = ratingFor(enrichmentByJoinId.get(record.join_id));
+        if (!rating) return false;
+        if (!includeLowSample && rating.count < 5) return false;
+        if (rating.average < ratingMin) return false;
+      }
+
+      if (pagesMin !== null || pagesMax !== null) {
+        const pageCount =
+          enrichmentByJoinId.get(record.join_id)?.page_count ?? null;
+        if (pageCount === null) return false;
+        if (pagesMin !== null && pageCount < pagesMin) return false;
+        if (pagesMax !== null && pageCount > pagesMax) return false;
+      }
+
       return true;
     },
   );
@@ -577,7 +638,7 @@ export function getBooks(db: DatabaseSync, options: BooksQuery): BooksPage {
   const seed = options.seed ?? '';
 
   records.sort((a, b) =>
-    compareRecords(a, b, sort, direction, relevance, seed),
+    compareRecords(a, b, sort, direction, relevance, seed, enrichmentByJoinId),
   );
 
   const total = records.length;
@@ -619,6 +680,14 @@ export function getFacets(db: DatabaseSync): FacetsResponse {
       ORDER BY author COLLATE NOCASE
     `),
   );
+  const subjects = rows<FacetCount>(
+    db.prepare(`
+      SELECT subject AS value, COUNT(DISTINCT join_id) AS count
+      FROM book_subjects
+      GROUP BY subject
+      ORDER BY subject COLLATE NOCASE
+    `),
+  );
 
-  return { tags, authors };
+  return { tags, authors, subjects };
 }

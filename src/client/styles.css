@@ -690,6 +690,32 @@ h1 {
   font-size: 0.75rem;
 }
 
+.filter-options-subjects {
+  max-height: 13rem;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.filter-range {
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.filter-range .filter-field {
+  width: 8.5rem;
+}
+
+.filter-range .filter-field input {
+  padding: 0.45rem 0.6rem;
+}
+
+.rating-cell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+}
+
 .filter-empty {
   margin: 0;
   font-size: 0.85rem;

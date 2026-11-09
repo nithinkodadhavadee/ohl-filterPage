@@ -36,6 +36,8 @@ const SORT_FIELDS = new Set<BookSortField>([
   'author',
   'holds',
   'year',
+  'rating',
+  'pageCount',
   'random',
 ]);
 
@@ -58,6 +60,19 @@ function parseSort(value: string | undefined): BookSortField | undefined {
   return SORT_FIELDS.has(value as BookSortField)
     ? (value as BookSortField)
     : undefined;
+}
+
+function parseNumber(
+  value: string | undefined,
+  min: number,
+  max: number,
+): number | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return undefined;
+  }
+  return parsed;
 }
 
 function parseDirection(value: string | undefined): SortDirection | undefined {
@@ -114,8 +129,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       offset?: string;
       author?: string;
       tag?: string | string[];
+      subject?: string | string[];
       holds?: string | string[];
       available_only?: string | string[];
+      rating_min?: string;
+      include_low_sample?: string | string[];
+      pages_min?: string;
+      pages_max?: string;
     };
   }>('/api/books', async (request) => {
     const limit = parseInteger(
@@ -135,8 +155,21 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       seed: request.query.seed,
       author: request.query.author,
       tags: toArray(request.query.tag).filter(Boolean),
+      subjects: toArray(request.query.subject).filter(Boolean),
       holds: toArray(request.query.holds).filter(isHoldBucket),
       availableOnly: parseBoolean(request.query.available_only),
+      ratingMin: parseNumber(request.query.rating_min, 0, 5),
+      includeLowSample: parseBoolean(request.query.include_low_sample),
+      pagesMin: parseNumber(
+        request.query.pages_min,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
+      pagesMax: parseNumber(
+        request.query.pages_max,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
     });
   });
 

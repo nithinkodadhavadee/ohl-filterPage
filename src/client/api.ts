@@ -15,8 +15,15 @@ export async function fetchBooks(query: BooksQuery = {}): Promise<BooksResponse>
   if (query.seed) params.set('seed', query.seed);
   if (query.author) params.set('author', query.author);
   for (const tag of query.tags ?? []) params.append('tag', tag);
+  for (const subject of query.subjects ?? []) params.append('subject', subject);
   for (const bucket of query.holds ?? []) params.append('holds', bucket);
   if (query.availableOnly) params.set('available_only', '1');
+  if (query.ratingMin !== undefined) {
+    params.set('rating_min', String(query.ratingMin));
+  }
+  if (query.includeLowSample) params.set('include_low_sample', '1');
+  if (query.pagesMin !== undefined) params.set('pages_min', String(query.pagesMin));
+  if (query.pagesMax !== undefined) params.set('pages_max', String(query.pagesMax));
 
   const response = await fetch(`/api/books?${params.toString()}`);
   if (!response.ok) {
