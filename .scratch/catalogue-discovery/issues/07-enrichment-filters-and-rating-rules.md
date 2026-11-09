@@ -4,7 +4,7 @@
 
 **Blocked by:** 05, 06
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] A Subjects filter presents a plain multi-select with book counts, combining selections as OR.
 - [ ] Minimum Rating ignores Ratings with fewer than five contributions by default, with an opt-in to include them.

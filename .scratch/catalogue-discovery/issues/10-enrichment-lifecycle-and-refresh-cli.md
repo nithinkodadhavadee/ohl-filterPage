@@ -4,7 +4,7 @@
 
 **Blocked by:** 06, 08, 09
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] Book records newly added to the crawl set are enriched exactly once before their first detail refresh.
 - [ ] The Librarian can refresh enrichment for one book record, all unmatched, all failed, or the whole sample.

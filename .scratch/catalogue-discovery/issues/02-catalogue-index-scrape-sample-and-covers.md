@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] An on-demand index command reads every page of the Catalogue index and persists only the book records selected by the frozen sample rule: A-first, J soft, 50 hard, titles before A excluded.
 - [ ] The full index is read even though only 50 book records are stored.

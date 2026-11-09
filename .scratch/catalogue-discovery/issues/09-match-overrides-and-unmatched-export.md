@@ -4,7 +4,7 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] A CSV import pins a book record to an enrichment record using join id, source, source record id or URL, and an optional note; invalid rows are reported.
 - [ ] A Match override takes precedence over automatic matching.

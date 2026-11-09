@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] A per-book read captures Copies, Out, Holds, publisher, year, description and Libib tags, plus a last-refreshed timestamp.
 - [ ] Available is derived as on-shelf copies exceeding Holds and is consistent in the grid and detail view.

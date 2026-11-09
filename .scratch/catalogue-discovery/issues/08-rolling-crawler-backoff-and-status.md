@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 **Needs conversation:** the hourly index poll and its interaction with a frozen sample.
 

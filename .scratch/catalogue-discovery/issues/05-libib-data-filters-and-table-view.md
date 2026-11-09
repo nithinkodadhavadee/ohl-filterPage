@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] Filters exist for author, one or more Libib tags, one or more Hold buckets (0, 1–2, 3–5, 6+) and Available-only.
 - [ ] Categories combine as AND; selections within a category combine as OR.

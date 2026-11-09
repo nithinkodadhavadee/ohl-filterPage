@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] Free-text search covers title, author and description, and a typo such as "tolkain" finds Tolkien.
 - [ ] Search results are ordered by relevance when text is present.

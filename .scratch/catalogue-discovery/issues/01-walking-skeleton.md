@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] The app starts locally with a documented command, serves the discovery page and a health endpoint, and needs no container.
 - [ ] A seed command loads fixture book records into an empty database, and development never contacts Libib.

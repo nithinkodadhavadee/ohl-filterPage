@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done (v1 prototype)
 
 - [ ] An enrichment command enriches a single book record by its join id.
 - [ ] Matching requires a normalized title plus author-surname match, and when several works qualify the one with the most ratings wins.
