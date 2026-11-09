@@ -16,7 +16,6 @@ import {
   type SortField,
 } from '../shared/contract';
 import {
-import {
   BADGE_EXPLANATIONS,
   BADGE_LABELS,
   ENRICHMENT_HINT_LABELS,
