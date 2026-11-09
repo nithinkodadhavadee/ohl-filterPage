@@ -19,7 +19,7 @@ import { createLibibAdapter } from './libib.js';
 import {
   isHoldBucket,
   isSortField,
-  isUnmatchedFilter,
+  normalizeUnmatchedFilter,
   type SortDirection,
   type SortField,
   type UnmatchedFilter,
@@ -72,9 +72,8 @@ function parseDirection(value: string | undefined): SortDirection | undefined {
   return value === 'asc' || value === 'desc' ? value : undefined;
 }
 
-function parseUnmatched(value: string | undefined): UnmatchedFilter | undefined {
-  if (value === undefined) return undefined;
-  return isUnmatchedFilter(value) ? value : undefined;
+function parseUnmatched(value: string | undefined): UnmatchedFilter {
+  return normalizeUnmatchedFilter(value);
 }
 
 function toArray(value: string | string[] | undefined): string[] {

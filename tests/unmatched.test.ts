@@ -7,7 +7,10 @@ import { buildApp } from '../src/server/app.js';
 import { loadConfig } from '../src/server/config.js';
 import { openDatabase } from '../src/server/db.js';
 import type { BooksResponse } from '../src/shared/contract.js';
-import { isUnmatchedBook } from '../src/shared/contract.js';
+import {
+  hasNoEnrichmentData,
+  isUnmatchedBook,
+} from '../src/shared/contract.js';
 
 let app: FastifyInstance;
 let dataDir: string;
@@ -23,6 +26,7 @@ beforeEach(async () => {
   );
   insertBook.run('matched-empty', 'A Matched Work');
   insertBook.run('unmatched', 'An Unmatched Work');
+  insertBook.run('failed', 'A Failed Work');
   insertBook.run('pending', 'A Pending Work');
 
   const insertEnrichment = db.prepare(
@@ -32,6 +36,7 @@ beforeEach(async () => {
   );
   insertEnrichment.run('matched-empty', 'enriched');
   insertEnrichment.run('unmatched', 'unmatched');
+  insertEnrichment.run('failed', 'failed');
 
   db.close();
 
@@ -44,7 +49,7 @@ afterEach(async () => {
 });
 
 describe('unmatched signal', () => {
-  it('marks a matched work with no rating or subjects as enriched', async () => {
+  it('treats only a confirmed no-match as unmatched', async () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/books?limit=50',
@@ -58,14 +63,45 @@ describe('unmatched signal', () => {
     expect(matched?.subjects).toEqual([]);
     expect(matched?.enrichmentStatus).toBe('enriched');
     expect(isUnmatchedBook(matched!)).toBe(false);
+    expect(hasNoEnrichmentData(matched!.enrichmentStatus)).toBe(false);
 
     const unmatched = body.books.find((book) => book.joinId === 'unmatched');
     expect(unmatched?.enrichmentStatus).toBe('unmatched');
     expect(isUnmatchedBook(unmatched!)).toBe(true);
+    expect(hasNoEnrichmentData(unmatched!.enrichmentStatus)).toBe(true);
+
+    const failed = body.books.find((book) => book.joinId === 'failed');
+    expect(failed?.enrichmentStatus).toBe('failed');
+    expect(isUnmatchedBook(failed!)).toBe(false);
+    expect(hasNoEnrichmentData(failed!.enrichmentStatus)).toBe(true);
 
     const pending = body.books.find((book) => book.joinId === 'pending');
     expect(pending?.enrichmentStatus).toBeNull();
-    expect(isUnmatchedBook(pending!)).toBe(true);
+    expect(isUnmatchedBook(pending!)).toBe(false);
+    expect(hasNoEnrichmentData(pending!.enrichmentStatus)).toBe(true);
+  });
+
+  it('exposes the source that was tried for every enrichment row', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/books?limit=50',
+    });
+    const body = response.json() as BooksResponse;
+
+    expect(
+      body.books.find((book) => book.joinId === 'matched-empty')
+        ?.enrichmentSource,
+    ).toBe('Open Library');
+    expect(
+      body.books.find((book) => book.joinId === 'unmatched')
+        ?.enrichmentSource,
+    ).toBe('Open Library');
+    expect(
+      body.books.find((book) => book.joinId === 'failed')?.enrichmentSource,
+    ).toBe('Open Library');
+    expect(
+      body.books.find((book) => book.joinId === 'pending')?.enrichmentSource,
+    ).toBeNull();
   });
 
   it('filters on enrichment status, not on missing rating or subjects', async () => {
@@ -84,6 +120,7 @@ describe('unmatched signal', () => {
     });
     const only = onlyResponse.json() as BooksResponse;
     expect(only.books.map((book) => book.joinId).sort()).toEqual([
+      'failed',
       'pending',
       'unmatched',
     ]);

@@ -308,22 +308,22 @@ None — the repository is greenfield. These tests establish the conventions: an
 Recorded after the v1 prototype and resolved in a grilling round. Tickets 12–19 are `ready-for-agent`. Nothing here is implemented yet.
 
 1. **Libib book links open the book.** Finding: Libib opens an item on initial load via `?solo=<join_id>`, while `?id=` is only handled on browser back/forward — which is why our link lands on the home page. The generated link changes to `?solo=` and is verified against a real book. Ticket 12.
-2. **Badges explain themselves.** The glossary defines a **Badge**: a computed label on a book record. Available, Unavailable, Low sample and Unmatched are Badges; Unmatched is driven by enrichment status, not by missing Rating/Subjects. Desktop: hover or keyboard focus reveals the explanation. Touch: badges in the detail view are tappable; tapping a badge on a grid card still opens the book. Fixed copy:
+2. **Badges explain themselves.** The glossary defines a **Badge**: a computed label on a book record. Available, Unavailable, Low sample and Unmatched are Badges; Unmatched is driven by enrichment status, not by missing Rating/Subjects. Desktop: hover or keyboard focus reveals the explanation. Touch: a badge can be tapped to reveal its explanation in both the detail view and the grid; tapping a grid badge does not open the book. Fixed copy:
    - Available: *At least one copy is on the shelf and not already claimed by the hold queue.*
    - Unavailable: *Every copy is on loan, or the hold queue has claimed the copies on the shelf.*
    - Low sample: *Based on fewer than five ratings, so the average can be misleading.*
-   - Unmatched: *No matching record was found in Open Library, so Rating, Subjects and page count are unavailable.*
+   - Unmatched: *No matching record was found in {source}, so Rating, Subjects and page count are unavailable.* The source name comes from the API. When enrichment failed or has not run, the explanation says enrichment has not completed instead of claiming no match was found; the badge keeps the name "Unmatched".
 
    Ticket 13.
 3. **Filter panel collapses.** Expanded by default, remembered for the session, never encoded in the URL. Ticket 14.
 4. **Subjects facet collapses.** Collapsed by default, remembered for the session; while collapsed it shows the selected count, the first two selected names and "+N more". Ticket 15.
 5. **Rating and page-count filters clear.** Empty inputs mean no bound; a per-group Clear resets the Rating minimum and both page bounds; 0 stays a meaningful page minimum. Ticket 16.
 6. **Detail scroll resets.** Every open starts at the top; no scroll carry-over between books. Ticket 17.
-7. **Unmatched filter.** Tri-state All books / Hide unmatched / Only unmatched, default All, using enrichment status and encoded in the URL. Ticket 18.
-8. **Enrichment source hints.** Detail view only. An "i" sits next to the Rating heading, the Subjects heading, and a new Page count heading (page count moves out of the Publication body). The source name comes from the API, not hardcoded. Tailored copy:
-   - Rating: *Sourced from Open Library. Ratings may be sparse or describe a different edition.*
-   - Subjects: *Sourced from Open Library; raw subjects, not genres.*
-   - Page count: *Sourced from Open Library; may be missing or describe a different edition.*
+7. **Unmatched filter.** Tri-state All books / Hide unmatched / Only unmatched, default All, using whether enrichment has any data (unmatched, failed, or not yet enriched) and encoded in the URL. Ticket 18.
+8. **Enrichment source hints.** Detail view only. An "i" sits next to the Rating heading, the Subjects heading, and a new Page count heading (page count moves out of the Publication body). The source name comes from the API, not hardcoded; the hints render only when the API exposes a source. Tailored copy:
+   - Rating: *Sourced from {source}. Ratings may be sparse or describe a different edition.*
+   - Subjects: *Sourced from {source}; raw subjects, not genres.*
+   - Page count: *Sourced from {source}; may be missing or describe a different edition.*
 
    No "i" in the grid or table; badges use their own hover/tap explanation instead. Ticket 19.
 
