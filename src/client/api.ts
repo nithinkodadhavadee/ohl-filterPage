@@ -25,6 +25,9 @@ export async function fetchBooks(query: BooksQuery = {}): Promise<BooksResponse>
   if (query.includeLowSample) params.set('include_low_sample', '1');
   if (query.pagesMin !== undefined) params.set('pages_min', String(query.pagesMin));
   if (query.pagesMax !== undefined) params.set('pages_max', String(query.pagesMax));
+  if (query.unmatched && query.unmatched !== 'all') {
+    params.set('unmatched', query.unmatched);
+  }
 
   const response = await fetch(`/api/books?${params.toString()}`);
   if (!response.ok) {

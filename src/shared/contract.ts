@@ -82,6 +82,14 @@ export function isHoldBucket(value: string): value is HoldBucket {
   return (HOLD_BUCKETS as readonly string[]).includes(value);
 }
 
+export const UNMATCHED_FILTERS = ['all', 'hide', 'only'] as const;
+
+export type UnmatchedFilter = (typeof UNMATCHED_FILTERS)[number];
+
+export function isUnmatchedFilter(value: string): value is UnmatchedFilter {
+  return (UNMATCHED_FILTERS as readonly string[]).includes(value);
+}
+
 export interface BooksQuery {
   limit?: number;
   offset?: number;
@@ -98,6 +106,7 @@ export interface BooksQuery {
   includeLowSample?: boolean;
   pagesMin?: number;
   pagesMax?: number;
+  unmatched?: UnmatchedFilter;
 }
 
 export interface BooksResponse {

@@ -19,8 +19,10 @@ import { createLibibAdapter } from './libib.js';
 import {
   isHoldBucket,
   isSortField,
+  isUnmatchedFilter,
   type SortDirection,
   type SortField,
+  type UnmatchedFilter,
 } from '../shared/contract.js';
 
 export interface BuildAppOptions {
@@ -68,6 +70,11 @@ function parseNumber(
 
 function parseDirection(value: string | undefined): SortDirection | undefined {
   return value === 'asc' || value === 'desc' ? value : undefined;
+}
+
+function parseUnmatched(value: string | undefined): UnmatchedFilter | undefined {
+  if (value === undefined) return undefined;
+  return isUnmatchedFilter(value) ? value : undefined;
 }
 
 function toArray(value: string | string[] | undefined): string[] {
@@ -127,6 +134,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       include_low_sample?: string | string[];
       pages_min?: string;
       pages_max?: string;
+      unmatched?: string;
     };
   }>('/api/books', async (request) => {
     const limit = parseInteger(
@@ -161,6 +169,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         0,
         Number.MAX_SAFE_INTEGER,
       ),
+      unmatched: parseUnmatched(request.query.unmatched),
     });
   });
 

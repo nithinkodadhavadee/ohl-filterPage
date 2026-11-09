@@ -2,6 +2,7 @@ import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
 import {
   defaultDirectionFor,
   isSortField,
+  isUnmatchedBook,
   type Book,
   type BooksQuery,
   type BooksResponse,
@@ -533,6 +534,7 @@ export function getBooks(
   const includeLowSample = options.includeLowSample === true;
   const pagesMin = options.pagesMin ?? null;
   const pagesMax = options.pagesMax ?? null;
+  const unmatchedFilter = options.unmatched ?? 'all';
   const enrichmentByJoinId = getEnrichmentMap(db);
   const selectedTagIds =
     tagFilter.length > 0
@@ -566,6 +568,16 @@ export function getBooks(
       if (selectedTagIds && !selectedTagIds.has(record.join_id)) return false;
       if (selectedSubjectIds && !selectedSubjectIds.has(record.join_id)) {
         return false;
+      }
+
+      if (unmatchedFilter !== 'all') {
+        const unmatched = isUnmatchedBook({
+          enrichmentStatus: enrichmentStatusFor(
+            enrichmentByJoinId.get(record.join_id),
+          ),
+        });
+        if (unmatchedFilter === 'hide' && unmatched) return false;
+        if (unmatchedFilter === 'only' && !unmatched) return false;
       }
 
       if (ratingMin !== undefined) {

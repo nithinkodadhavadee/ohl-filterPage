@@ -4,16 +4,19 @@ import { fetchBook, fetchBooks, fetchFacets, fetchStatus } from './api';
 import {
   HOLD_BUCKETS,
   SORT_FIELDS,
+  UNMATCHED_FILTERS,
   defaultDirectionFor,
   isHoldBucket,
   isSortField,
   isUnmatchedBook,
+  isUnmatchedFilter,
   type Book,
   type BooksResponse,
   type FacetsResponse,
   type HoldBucket,
   type SortDirection,
   type SortField,
+  type UnmatchedFilter,
 } from '../shared/contract';
 import {
   BADGE_EXPLANATIONS,
@@ -484,6 +487,12 @@ const HOLD_BUCKET_LABELS: Record<HoldBucket, string> = {
   '6+': '6 or more',
 };
 
+const UNMATCHED_FILTER_LABELS: Record<UnmatchedFilter, string> = {
+  all: 'All books',
+  hide: 'Hide unmatched',
+  only: 'Only unmatched',
+};
+
 function BookTable({
   books,
   onSelect,
@@ -573,6 +582,7 @@ interface ViewState {
   includeLowSample: boolean;
   pagesMin: string;
   pagesMax: string;
+  unmatched: UnmatchedFilter;
   view: ViewMode;
 }
 
@@ -610,6 +620,9 @@ function parseViewState(search: string): ViewState {
         .filter((value): value is HoldBucket => isHoldBucket(value)),
     ),
   ];
+  const rawUnmatched = params.get('unmatched');
+  const unmatched: UnmatchedFilter =
+    rawUnmatched && isUnmatchedFilter(rawUnmatched) ? rawUnmatched : 'all';
 
   return {
     q,
@@ -628,6 +641,7 @@ function parseViewState(search: string): ViewState {
       params.get('include_low_sample') === 'true',
     pagesMin: params.get('pages_min') ?? '',
     pagesMax: params.get('pages_max') ?? '',
+    unmatched,
     view: params.get('view') === 'table' ? 'table' : 'grid',
   };
 }
@@ -642,7 +656,8 @@ function activeFilterCount(view: ViewState): number {
     (view.ratingMin.trim() ? 1 : 0) +
     (view.includeLowSample ? 1 : 0) +
     (view.pagesMin.trim() ? 1 : 0) +
-    (view.pagesMax.trim() ? 1 : 0)
+    (view.pagesMax.trim() ? 1 : 0) +
+    (view.unmatched !== 'all' ? 1 : 0)
   );
 }
 
@@ -668,6 +683,7 @@ function viewToUrl(view: ViewState): string {
   if (view.includeLowSample) params.set('include_low_sample', '1');
   if (view.pagesMin.trim()) params.set('pages_min', view.pagesMin.trim());
   if (view.pagesMax.trim()) params.set('pages_max', view.pagesMax.trim());
+  if (view.unmatched !== 'all') params.set('unmatched', view.unmatched);
   if (view.view === 'table') params.set('view', 'table');
   const search = params.toString();
   return search
@@ -815,6 +831,7 @@ export function App() {
       includeLowSample: view.includeLowSample,
       pagesMin: parseOptionalNumber(view.pagesMin),
       pagesMax: parseOptionalNumber(view.pagesMax),
+      unmatched: view.unmatched === 'all' ? undefined : view.unmatched,
       limit: 200,
       offset: 0,
     })
@@ -929,6 +946,10 @@ export function App() {
     updateView({ ...view, pagesMax });
   };
 
+  const handleUnmatchedChange = (unmatched: UnmatchedFilter) => {
+    updateView({ ...view, unmatched }, { push: true });
+  };
+
   const toggleFilters = () => {
     const next = !filtersOpen;
     setFiltersOpen(next);
@@ -975,6 +996,7 @@ export function App() {
         includeLowSample: false,
         pagesMin: '',
         pagesMax: '',
+        unmatched: 'all',
       },
       { push: true },
     );
@@ -1266,6 +1288,24 @@ export function App() {
                 >
                   Clear
                 </button>
+              </div>
+            </fieldset>
+
+            <fieldset className="filter-group">
+              <legend>Unmatched enrichment</legend>
+              <div className="filter-options">
+                {UNMATCHED_FILTERS.map((value) => (
+                  <label className="filter-option" key={value}>
+                    <input
+                      type="radio"
+                      name="unmatched-filter"
+                      value={value}
+                      checked={view.unmatched === value}
+                      onChange={() => handleUnmatchedChange(value)}
+                    />
+                    <span>{UNMATCHED_FILTER_LABELS[value]}</span>
+                  </label>
+                ))}
               </div>
             </fieldset>
 
