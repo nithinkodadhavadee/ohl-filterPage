@@ -1,17 +1,19 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
+import { createAdapterRegistry } from './adapters.js';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db.js';
 import {
   enrichBook,
+  EnrichmentAdapterRegistry,
   type EnrichmentAdapter,
   type EnrichmentOutcome,
 } from './enrichment.js';
-import { OpenLibraryAdapter } from './openlibrary.js';
 
 export interface EnrichCliDeps {
   db: DatabaseSync;
-  adapter: EnrichmentAdapter;
+  adapter?: EnrichmentAdapter;
+  adapters?: EnrichmentAdapterRegistry;
   now?: () => Date;
   log?: (line: string) => void;
   error?: (line: string) => void;
@@ -64,9 +66,17 @@ export async function runEnrichCli(
     return { exitCode: 1 };
   }
 
+  const adapters =
+    deps.adapters ??
+    new EnrichmentAdapterRegistry(deps.adapter ? [deps.adapter] : []);
+  if (adapters.size === 0) {
+    error('No enrichment adapter is configured.');
+    return { exitCode: 1 };
+  }
+
   let outcome: EnrichmentOutcome;
   try {
-    outcome = await enrichBook(deps.db, deps.adapter, joinId, {
+    outcome = await enrichBook(deps.db, adapters, joinId, {
       now: deps.now,
     });
   } catch (caught) {
@@ -107,10 +117,10 @@ const isMain =
 if (isMain) {
   const config = loadConfig();
   const db = openDatabase(config);
-  const adapter = new OpenLibraryAdapter();
+  const adapters = createAdapterRegistry();
 
   try {
-    const result = await runEnrichCli(process.argv.slice(2), { db, adapter });
+    const result = await runEnrichCli(process.argv.slice(2), { db, adapters });
     process.exitCode = result.exitCode;
   } finally {
     db.close();

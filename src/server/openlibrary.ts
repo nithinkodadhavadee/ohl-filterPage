@@ -130,7 +130,36 @@ export interface OpenLibraryAdapterOptions {
   limit?: number;
 }
 
+const OPEN_LIBRARY_WORK_URL =
+  /\/works\/(OL\d+W)(?:\.json)?(?:\/|$)/i;
+const OPEN_LIBRARY_WORK_ID = /^OL\d+W$/i;
+
+export function normalizeOpenLibrarySourceId(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (OPEN_LIBRARY_WORK_ID.test(trimmed)) {
+    return `/works/${trimmed}`;
+  }
+
+  let pathname = trimmed;
+  if (/^https?:\/\//i.test(trimmed) || /openlibrary\.org/i.test(trimmed)) {
+    try {
+      pathname = new URL(
+        /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
+      ).pathname;
+    } catch {
+      return null;
+    }
+  }
+
+  const match = pathname.match(OPEN_LIBRARY_WORK_URL);
+  return match ? `/works/${match[1]}` : null;
+}
+
 function workPath(sourceId: string): string {
+  const normalized = normalizeOpenLibrarySourceId(sourceId);
+  if (normalized) return normalized;
   return sourceId.startsWith('/works/') ? sourceId : `/works/${sourceId}`;
 }
 
@@ -225,6 +254,12 @@ export class OpenLibraryAdapter implements EnrichmentAdapter {
       ratingCount: ratings ? ratings.count : candidate.ratingCount,
       pageCount: candidate.pageCount,
       subjects,
+      title: work?.title ?? null,
+      authors: [],
     };
+  }
+
+  normalizeSourceId(input: string): string | null {
+    return normalizeOpenLibrarySourceId(input);
   }
 }
