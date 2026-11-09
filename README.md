@@ -58,6 +58,24 @@ To enrich one book record from Open Library:
 npm run enrich -- --id <joinId>
 ```
 
+Enrichment runs once per book record, on first sight. When `npm run index`,
+`npm run resample` or the rolling crawler adds a book record to the sample, it is
+enriched before its first detail refresh and then never again automatically.
+There is no enrichment schedule. Failures are recorded so they can be retried.
+
+To refresh enrichment deliberately, choose one of the bulk targets:
+
+```sh
+npm run enrich -- --all        # the whole frozen sample
+npm run enrich -- --unmatched  # unmatched or not yet enriched records
+npm run enrich -- --failed     # records whose last run failed
+```
+
+Bulk runs are sequential and paced by `ENRICH_REQUEST_DELAY_MS` (default one
+second, falling back to `LIBIB_REQUEST_DELAY_MS` when set). They print a summary
+of enriched, unmatched and failed counts. A bulk refresh never overwrites or
+deletes a match override.
+
 To pin a book record to a specific Open Library work, import a CSV with the
 columns `join_id,source,source_id_or_url,note`. `source_id_or_url` accepts a
 bare work id such as `OL1168083W` or a full Open Library URL. The `note` value
@@ -100,6 +118,7 @@ Environment variables:
 | `PORT`                        | `3000`   | API port                                     |
 | `DATA_DIR`                    | `./data` | SQLite database and cached covers directory  |
 | `LIBIB_REQUEST_DELAY_MS`      | `1000`   | Delay between Libib requests (index; detail refresh defaults to `2000`) |
+| `ENRICH_REQUEST_DELAY_MS`     | `1000`   | Delay between sequential enrichment requests (falls back to `LIBIB_REQUEST_DELAY_MS`) |
 | `CRAWLER_ENABLED`             | `true`   | Run the rolling crawler on server start      |
 | `CYCLE_DELAY_SECONDS`         | `30`     | Delay between rolling-crawler book reads     |
 | `CRAWLER_MAX_BACKOFF_SECONDS` | `900`    | Upper bound for 403/429 backoff              |
@@ -114,7 +133,7 @@ Environment variables:
 | `npm run index`     | Refresh the frozen 50-book sample from Libib      |
 | `npm run resample`  | Re-pick the sample and reconcile stored records   |
 | `npm run refresh`   | Refresh circulation and detail for sampled books  |
-| `npm run enrich`    | Enrich one book record from Open Library          |
+| `npm run enrich`    | Enrich one book record, or all/unmatched/failed records |
 | `npm run overrides:import` | Import match overrides from a CSV          |
 | `npm run export:unmatched` | Export unmatched book records as CSV       |
 | `npm test`          | Run the test suite                                |

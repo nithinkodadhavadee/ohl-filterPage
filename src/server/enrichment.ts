@@ -68,6 +68,26 @@ export interface EnrichBookOptions {
   source?: string;
 }
 
+export function hasEnrichmentRecord(
+  db: DatabaseSync,
+  joinId: string,
+): boolean {
+  const statement = db.prepare(
+    'SELECT 1 AS found FROM enrichment WHERE join_id = ?',
+  );
+  return statement.get(joinId) !== undefined;
+}
+
+export async function enrichOnFirstSight(
+  db: DatabaseSync,
+  adapters: EnrichmentAdapterRegistry,
+  joinId: string,
+  options: EnrichBookOptions = {},
+): Promise<EnrichmentOutcome | null> {
+  if (hasEnrichmentRecord(db, joinId)) return null;
+  return enrichBook(db, adapters, joinId, options);
+}
+
 export type EnrichmentOutcome =
   | {
       status: 'enriched';

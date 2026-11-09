@@ -1,12 +1,23 @@
 import type { DatabaseSync } from 'node:sqlite';
+import {
+  enrichOnFirstSight,
+  type EnrichmentAdapterRegistry,
+} from './enrichment.js';
 import type { LibibIndexItem } from './libib-index.js';
 import { selectSample } from './sample.js';
 
 export interface CatalogueIndexDeps {
   fetchIndex: () => Promise<LibibIndexItem[]>;
   cacheCover?: (item: LibibIndexItem) => Promise<string | null>;
+  adapters?: EnrichmentAdapterRegistry;
+  enrichDelayMs?: number;
+  sleep?: (milliseconds: number) => Promise<void>;
+  logger?: (message: string) => void;
   now?: () => Date;
 }
+
+const defaultSleep = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export interface CatalogueIndexResult {
   mode: 'index' | 'resample';
@@ -107,13 +118,18 @@ async function persistSample(
 
   let added = 0;
   let updated = 0;
+  const addedIds: string[] = [];
 
   db.exec('BEGIN IMMEDIATE');
   try {
     for (const { item, coverPath } of prepared) {
       const previous = existing.get(item.joinId);
-      if (previous) updated += 1;
-      else added += 1;
+      if (previous) {
+        updated += 1;
+      } else {
+        added += 1;
+        addedIds.push(item.joinId);
+      }
 
       upsertBook.run(
         item.joinId,
@@ -144,6 +160,36 @@ async function persistSample(
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
+  }
+
+  if (addedIds.length > 0 && deps.adapters && deps.adapters.size > 0) {
+    const delayMs = deps.enrichDelayMs ?? 0;
+    const sleep = deps.sleep ?? defaultSleep;
+
+    for (let index = 0; index < addedIds.length; index += 1) {
+      if (index > 0 && delayMs > 0) await sleep(delayMs);
+
+      const joinId = addedIds[index];
+      try {
+        const outcome = await enrichOnFirstSight(
+          db,
+          deps.adapters,
+          joinId,
+          { now: deps.now },
+        );
+        if (outcome?.status === 'failed') {
+          deps.logger?.(
+            `Could not enrich new book record ${joinId}: ${outcome.error}`,
+          );
+        }
+      } catch (error) {
+        deps.logger?.(
+          `Could not enrich new book record ${joinId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
   }
 
   return {

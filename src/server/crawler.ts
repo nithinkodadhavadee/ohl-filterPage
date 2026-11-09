@@ -5,6 +5,10 @@ import {
   DEFAULT_CRAWLER_CYCLE_DELAY_MS,
   DEFAULT_CRAWLER_MAX_BACKOFF_MS,
 } from './config.js';
+import {
+  enrichOnFirstSight,
+  type EnrichmentAdapterRegistry,
+} from './enrichment.js';
 import type { LibibDetail } from './libib-detail.js';
 import { LibibRequestError } from './libib-index.js';
 import {
@@ -49,6 +53,7 @@ export interface CrawlerStatus {
 export interface CrawlStepDeps {
   db: DatabaseSync;
   fetchDetail: (joinId: string) => Promise<LibibDetail | null>;
+  adapters?: EnrichmentAdapterRegistry;
   now?: () => Date;
 }
 
@@ -151,6 +156,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function needsFirstSightEnrichment(
+  db: DatabaseSync,
+  joinId: string,
+): boolean {
+  const row = db
+    .prepare('SELECT last_refreshed_at FROM book_records WHERE join_id = ?')
+    .get(joinId) as { last_refreshed_at: string | null } | undefined;
+  return row !== undefined && row.last_refreshed_at === null;
+}
+
 export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
   const sampleIds = getSampleJoinIds(deps.db);
   const total = sampleIds?.length ?? 0;
@@ -184,6 +199,20 @@ export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
   const joinId = sampleIds[cursor];
 
   try {
+    if (
+      deps.adapters &&
+      deps.adapters.size > 0 &&
+      needsFirstSightEnrichment(deps.db, joinId)
+    ) {
+      try {
+        await enrichOnFirstSight(deps.db, deps.adapters, joinId, {
+          now: deps.now,
+        });
+      } catch {
+        // A first-sight enrichment failure must not block the detail refresh.
+      }
+    }
+
     const detail = await deps.fetchDetail(joinId);
     if (detail) {
       persistBookDetail(deps.db, detail, nowIso);
