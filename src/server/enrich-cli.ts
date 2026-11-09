@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
 import { createAdapterRegistry } from './adapters.js';
 import { loadConfig } from './config.js';
+import { getSampleJoinIds } from './circulation.js';
 import { openDatabase } from './db.js';
 import {
   enrichBook,
@@ -10,80 +11,156 @@ import {
   type EnrichmentOutcome,
 } from './enrichment.js';
 
+export const DEFAULT_ENRICH_DELAY_MS = 1000;
+
 export interface EnrichCliDeps {
   db: DatabaseSync;
   adapter?: EnrichmentAdapter;
   adapters?: EnrichmentAdapterRegistry;
+  delayMs?: number;
+  sleep?: (milliseconds: number) => Promise<void>;
   now?: () => Date;
   log?: (line: string) => void;
   error?: (line: string) => void;
 }
 
+export type EnrichSelection =
+  | { kind: 'id'; joinId: string }
+  | { kind: 'all' }
+  | { kind: 'unmatched' }
+  | { kind: 'failed' };
+
+export interface EnrichSummary {
+  enriched: number;
+  unmatched: number;
+  failed: number;
+}
+
 export interface EnrichCliResult {
   exitCode: number;
   outcome?: EnrichmentOutcome;
+  summary?: EnrichSummary;
+  outcomes?: EnrichmentOutcome[];
 }
 
-const USAGE = 'Usage: npm run enrich -- --id <joinId>';
+const USAGE =
+  'Usage: npm run enrich -- --id <joinId> | --all | --unmatched | --failed';
 
-export function parseEnrichArgs(argv: readonly string[]): string | null {
-  let joinId: string | null = null;
+const defaultSleep = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+export function parseEnrichDelay(value: string | undefined): number {
+  if (!value) return DEFAULT_ENRICH_DELAY_MS;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed >= 0
+    ? parsed
+    : DEFAULT_ENRICH_DELAY_MS;
+}
+
+export function parseEnrichArgs(argv: readonly string[]): EnrichSelection {
+  let selection: EnrichSelection | null = null;
+
+  const choose = (next: EnrichSelection): void => {
+    if (selection !== null) {
+      throw new Error(`Choose exactly one refresh target. ${USAGE}`);
+    }
+    selection = next;
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
+
+    if (argument === '--all') {
+      choose({ kind: 'all' });
+      continue;
+    }
+    if (argument === '--unmatched') {
+      choose({ kind: 'unmatched' });
+      continue;
+    }
+    if (argument === '--failed') {
+      choose({ kind: 'failed' });
+      continue;
+    }
     if (argument === '--id') {
-      joinId = argv[index + 1] ?? null;
+      const value = argv[index + 1];
+      if (!value || value.startsWith('--') || !value.trim()) {
+        throw new Error(`--id requires a join id. ${USAGE}`);
+      }
+      choose({ kind: 'id', joinId: value.trim() });
       index += 1;
       continue;
     }
     if (argument.startsWith('--id=')) {
-      joinId = argument.slice('--id='.length);
+      const value = argument.slice('--id='.length).trim();
+      if (!value) {
+        throw new Error(`--id requires a join id. ${USAGE}`);
+      }
+      choose({ kind: 'id', joinId: value });
       continue;
     }
+
     throw new Error(`Unknown argument "${argument}". ${USAGE}`);
   }
 
-  return joinId && joinId.trim() ? joinId.trim() : null;
+  if (selection === null) {
+    throw new Error(USAGE);
+  }
+
+  return selection;
 }
 
-export async function runEnrichCli(
-  argv: readonly string[],
-  deps: EnrichCliDeps,
-): Promise<EnrichCliResult> {
-  const log = deps.log ?? ((line: string) => console.log(line));
-  const error = deps.error ?? ((line: string) => console.error(line));
+interface EnrichmentStatusRow {
+  join_id: string;
+  status: string;
+}
 
-  let joinId: string | null;
-  try {
-    joinId = parseEnrichArgs(argv);
-  } catch (caught) {
-    error(caught instanceof Error ? caught.message : String(caught));
-    return { exitCode: 1 };
-  }
+function allBookIds(db: DatabaseSync): string[] {
+  return (
+    db
+      .prepare('SELECT join_id FROM book_records ORDER BY join_id')
+      .all() as unknown as { join_id: string }[]
+  ).map((entry) => entry.join_id);
+}
 
-  if (!joinId) {
-    error(USAGE);
-    return { exitCode: 1 };
-  }
+function crawlSetIds(db: DatabaseSync): string[] {
+  const sample = getSampleJoinIds(db);
+  return sample && sample.length > 0 ? sample : allBookIds(db);
+}
 
-  const adapters =
-    deps.adapters ??
-    new EnrichmentAdapterRegistry(deps.adapter ? [deps.adapter] : []);
-  if (adapters.size === 0) {
-    error('No enrichment adapter is configured.');
-    return { exitCode: 1 };
-  }
+function enrichmentStatuses(db: DatabaseSync): Map<string, string> {
+  const rows = db
+    .prepare('SELECT join_id, status FROM enrichment')
+    .all() as unknown as EnrichmentStatusRow[];
+  return new Map(rows.map((row) => [row.join_id, row.status]));
+}
 
-  let outcome: EnrichmentOutcome;
-  try {
-    outcome = await enrichBook(deps.db, adapters, joinId, {
-      now: deps.now,
+export function selectEnrichTargets(
+  db: DatabaseSync,
+  selection: EnrichSelection,
+): string[] {
+  if (selection.kind === 'id') return [selection.joinId];
+
+  const ids = crawlSetIds(db);
+  if (selection.kind === 'all') return ids;
+
+  const statuses = enrichmentStatuses(db);
+  if (selection.kind === 'unmatched') {
+    return ids.filter((joinId) => {
+      const status = statuses.get(joinId);
+      return status === undefined || status === 'unmatched';
     });
-  } catch (caught) {
-    error(caught instanceof Error ? caught.message : String(caught));
-    return { exitCode: 1 };
   }
 
+  return ids.filter((joinId) => statuses.get(joinId) === 'failed');
+}
+
+function logSingleOutcome(
+  outcome: EnrichmentOutcome,
+  joinId: string,
+  log: (line: string) => void,
+  error: (line: string) => void,
+): EnrichCliResult {
   switch (outcome.status) {
     case 'enriched': {
       const count = outcome.data.ratingCount ?? 0;
@@ -103,11 +180,83 @@ export async function runEnrichCli(
       );
       return { exitCode: 0, outcome };
     case 'failed':
-      error(
-        `Could not enrich book record ${joinId}: ${outcome.error}`,
-      );
+      error(`Could not enrich book record ${joinId}: ${outcome.error}`);
       return { exitCode: 1, outcome };
   }
+}
+
+export async function runEnrichCli(
+  argv: readonly string[],
+  deps: EnrichCliDeps,
+): Promise<EnrichCliResult> {
+  const log = deps.log ?? ((line: string) => console.log(line));
+  const error = deps.error ?? ((line: string) => console.error(line));
+
+  let selection: EnrichSelection;
+  try {
+    selection = parseEnrichArgs(argv);
+  } catch (caught) {
+    error(caught instanceof Error ? caught.message : String(caught));
+    return { exitCode: 1 };
+  }
+
+  const adapters =
+    deps.adapters ??
+    new EnrichmentAdapterRegistry(deps.adapter ? [deps.adapter] : []);
+  if (adapters.size === 0) {
+    error('No enrichment adapter is configured.');
+    return { exitCode: 1 };
+  }
+
+  const joinIds = selectEnrichTargets(deps.db, selection);
+  const delayMs = deps.delayMs ?? 0;
+  const sleep = deps.sleep ?? defaultSleep;
+  const summary: EnrichSummary = { enriched: 0, unmatched: 0, failed: 0 };
+  const outcomes: EnrichmentOutcome[] = [];
+
+  for (let index = 0; index < joinIds.length; index += 1) {
+    if (index > 0 && delayMs > 0) await sleep(delayMs);
+
+    const joinId = joinIds[index];
+    let outcome: EnrichmentOutcome;
+    try {
+      outcome = await enrichBook(deps.db, adapters, joinId, {
+        now: deps.now,
+      });
+    } catch (caught) {
+      error(caught instanceof Error ? caught.message : String(caught));
+      if (selection.kind === 'id') return { exitCode: 1 };
+      summary.failed += 1;
+      continue;
+    }
+
+    summary[outcome.status] += 1;
+    outcomes.push(outcome);
+
+    if (selection.kind === 'id') {
+      return logSingleOutcome(outcome, joinId, log, error);
+    }
+
+    if (outcome.status === 'failed') {
+      error(`Could not enrich book record ${joinId}: ${outcome.error}`);
+    }
+  }
+
+  if (selection.kind === 'id') {
+    return { exitCode: 0 };
+  }
+
+  log(
+    `Refreshed enrichment for ${joinIds.length} book record(s): ` +
+      `${summary.enriched} enriched, ${summary.unmatched} unmatched, ` +
+      `${summary.failed} failed.`,
+  );
+
+  return {
+    exitCode: summary.failed > 0 ? 1 : 0,
+    summary,
+    outcomes,
+  };
 }
 
 const isMain =
@@ -118,9 +267,17 @@ if (isMain) {
   const config = loadConfig();
   const db = openDatabase(config);
   const adapters = createAdapterRegistry();
+  const delayMs = parseEnrichDelay(
+    process.env.ENRICH_REQUEST_DELAY_MS ??
+      process.env.LIBIB_REQUEST_DELAY_MS,
+  );
 
   try {
-    const result = await runEnrichCli(process.argv.slice(2), { db, adapters });
+    const result = await runEnrichCli(process.argv.slice(2), {
+      db,
+      adapters,
+      delayMs,
+    });
     process.exitCode = result.exitCode;
   } finally {
     db.close();

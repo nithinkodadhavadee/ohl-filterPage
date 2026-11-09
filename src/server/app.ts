@@ -2,6 +2,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { createAdapterRegistry } from './adapters.js';
 import {
   getBook,
   getBooks,
@@ -157,6 +158,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       db,
       fetchDetail: (joinId) =>
         fetchBookDetail(joinId, { baseUrl: process.env.LIBIB_BASE_URL }),
+      adapters: createAdapterRegistry(),
       cycleDelayMs: config.crawlerCycleDelayMs,
       maxBackoffMs: config.crawlerMaxBackoffMs,
       logger: options.logger

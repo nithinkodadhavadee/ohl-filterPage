@@ -3,9 +3,11 @@ import {
   resampleCatalogueIndex,
   type CatalogueIndexResult,
 } from './catalogue-index.js';
+import { createAdapterRegistry } from './adapters.js';
 import { loadConfig } from './config.js';
 import { cacheCover } from './covers.js';
 import { openDatabase } from './db.js';
+import { parseEnrichDelay } from './enrich-cli.js';
 import { DEFAULT_INDEX_DELAY_MS, fetchCatalogueIndex } from './libib-index.js';
 
 type Mode = CatalogueIndexResult['mode'];
@@ -38,6 +40,12 @@ try {
       }),
     cacheCover: (item: Parameters<typeof cacheCover>[0]) =>
       cacheCover(item, { coversDir: config.coversDir }),
+    adapters: createAdapterRegistry(),
+    enrichDelayMs: parseEnrichDelay(
+      process.env.ENRICH_REQUEST_DELAY_MS ??
+        process.env.LIBIB_REQUEST_DELAY_MS,
+    ),
+    logger: (message: string) => console.error(message),
   };
 
   const result =
