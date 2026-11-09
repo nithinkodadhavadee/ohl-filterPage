@@ -187,7 +187,7 @@ function toBook(db: DatabaseSync, record: BookRow): Book {
     pageCount: enrichment?.page_count ?? null,
     enrichmentStatus: enrichmentStatusFor(enrichment),
     refreshedAt: record.last_refreshed_at,
-    libibUrl: `${LIBIB_BASE_URL}?id=${encodeURIComponent(record.join_id)}`,
+    libibUrl: `${LIBIB_BASE_URL}?solo=${encodeURIComponent(record.join_id)}`,
   };
 }
 
