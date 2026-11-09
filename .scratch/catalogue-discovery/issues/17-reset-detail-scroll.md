@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 2)
 
 - [ ] Every newly opened book detail starts scrolled to the top.
 - [ ] Scrolling one book and then opening a different book does not inherit that position.

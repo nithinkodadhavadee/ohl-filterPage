@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 2)
 
 - [ ] Empty Rating and page-count inputs mean "no bound".
 - [ ] A per-group Clear resets the Rating minimum and both page-count bounds in one step.

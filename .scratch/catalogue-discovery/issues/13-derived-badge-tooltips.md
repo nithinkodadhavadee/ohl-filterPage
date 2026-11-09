@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 2)
 
 - [ ] The four Badges share one component and these texts: Available — "At least one copy is on the shelf and not already claimed by the hold queue."; Unavailable — "Every copy is on loan, or the hold queue has claimed the copies on the shelf."; Low sample — "Based on fewer than five ratings, so the average can be misleading."; Unmatched — "No matching record was found in {source}, so Rating, Subjects and page count are unavailable.", where {source} comes from the API (neutral fallback when unknown).
 - [ ] Desktop hover and keyboard focus reveal the explanation.

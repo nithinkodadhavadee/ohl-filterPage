@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 2)
 
 - [ ] The Subjects facet collapses and expands independently of the filter panel.
 - [ ] It is collapsed by default.

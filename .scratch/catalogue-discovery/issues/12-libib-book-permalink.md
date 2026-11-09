@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 2)
 
 - [ ] Every book's Libib link uses `?solo=<join_id>`.
 - [ ] Opening one real book's link lands on that book, not the home page.

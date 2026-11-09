@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 2)
 
 - [ ] The control offers three states: All books, Hide unmatched, Only unmatched.
 - [ ] It defaults to All books.

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 2)
 
 - [ ] The book API exposes the enrichment source name whenever an enrichment row exists, whatever its status; it stays null when no row exists.
 - [ ] The detail view shows an "i" next to Rating, Subjects, and a new Page count heading; Publication keeps only publisher and year.
