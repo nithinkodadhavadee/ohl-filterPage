@@ -24,6 +24,7 @@ export interface Book {
   rating: Rating | null;
   pageCount: number | null;
   enrichmentStatus: EnrichmentStatus | null;
+  enrichmentSource: string | null;
   refreshedAt: string | null;
   libibUrl: string;
 }
