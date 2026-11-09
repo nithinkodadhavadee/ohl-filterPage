@@ -628,6 +628,40 @@ h1 {
   text-transform: uppercase;
 }
 
+.filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.1rem 0.2rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.filters-chevron {
+  display: inline-block;
+  font-size: 0.7rem;
+  transition: transform 120ms ease-out;
+}
+
+.filters-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.filters-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.filters-body[hidden] {
+  display: none;
+}
+
 .filters-summary {
   display: flex;
   align-items: center;
@@ -692,6 +726,40 @@ h1 {
   gap: 0.4rem 0.8rem;
 }
 
+.filter-options[hidden] {
+  display: none;
+}
+
+.facet-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.65rem;
+  margin-bottom: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.facet-toggle:hover {
+  border-color: var(--accent);
+}
+
+.facet-toggle-action {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .filter-option {
   display: inline-flex;
   align-items: center;
@@ -721,6 +789,27 @@ h1 {
 .filter-range {
   align-items: flex-end;
   gap: 0.75rem;
+}
+
+.clear-group {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clear-group:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.clear-group:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .filter-range .filter-field {
@@ -753,7 +842,10 @@ h1 {
 }
 
 .filter-field input:focus-visible,
-.clear-filters:focus-visible {
+.clear-filters:focus-visible,
+.clear-group:focus-visible,
+.filters-toggle:focus-visible,
+.facet-toggle:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }

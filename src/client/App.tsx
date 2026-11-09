@@ -14,6 +14,15 @@ import {
   type SortDirection,
   type SortField,
 } from '../shared/contract';
+import {
+  FILTER_PANEL_STORAGE_KEY,
+  SUBJECTS_FACET_STORAGE_KEY,
+  browserSessionStorage,
+  parseOptionalNumber,
+  readStoredBoolean,
+  subjectFacetSummary,
+  writeStoredBoolean,
+} from './filter-ui';
 import type { CrawlerStatus, ViewMode } from './types';
 
 function formatDate(value: string | null): string {
@@ -440,13 +449,6 @@ function activeFilterCount(view: ViewState): number {
   );
 }
 
-function numberOrUndefined(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function ensureSeed(view: ViewState): ViewState {
   if (view.sort === 'random' && !view.seed) {
     return { ...view, seed: createSeed() };
@@ -497,6 +499,12 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Book | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(() =>
+    readStoredBoolean(browserSessionStorage(), FILTER_PANEL_STORAGE_KEY, true),
+  );
+  const [subjectsOpen, setSubjectsOpen] = useState<boolean>(() =>
+    readStoredBoolean(browserSessionStorage(), SUBJECTS_FACET_STORAGE_KEY, false),
+  );
   const [reloadToken, setReloadToken] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -606,10 +614,10 @@ export function App() {
       subjects: view.subjects,
       holds: view.holds,
       availableOnly: view.availableOnly,
-      ratingMin: numberOrUndefined(view.ratingMin),
+      ratingMin: parseOptionalNumber(view.ratingMin),
       includeLowSample: view.includeLowSample,
-      pagesMin: numberOrUndefined(view.pagesMin),
-      pagesMax: numberOrUndefined(view.pagesMax),
+      pagesMin: parseOptionalNumber(view.pagesMin),
+      pagesMax: parseOptionalNumber(view.pagesMax),
       limit: 200,
       offset: 0,
     })
@@ -722,6 +730,28 @@ export function App() {
 
   const handlePagesMaxChange = (pagesMax: string) => {
     updateView({ ...view, pagesMax });
+  };
+
+  const toggleFilters = () => {
+    const next = !filtersOpen;
+    setFiltersOpen(next);
+    writeStoredBoolean(browserSessionStorage(), FILTER_PANEL_STORAGE_KEY, next);
+  };
+
+  const toggleSubjects = () => {
+    const next = !subjectsOpen;
+    setSubjectsOpen(next);
+    writeStoredBoolean(browserSessionStorage(), SUBJECTS_FACET_STORAGE_KEY, next);
+  };
+
+  const clearRating = () => {
+    if (!view.ratingMin.trim()) return;
+    updateView({ ...view, ratingMin: '' }, { push: true });
+  };
+
+  const clearPages = () => {
+    if (!view.pagesMin.trim() && !view.pagesMax.trim()) return;
+    updateView({ ...view, pagesMin: '', pagesMax: '' }, { push: true });
   };
 
   const toggleHold = (bucket: HoldBucket) => {
@@ -838,7 +868,23 @@ export function App() {
 
         <section className="filters" aria-label="Filters">
           <div className="filters-header">
-            <h2 className="filters-title">Filters</h2>
+            <h2 className="filters-title">
+              <button
+                type="button"
+                className="filters-toggle"
+                aria-expanded={filtersOpen}
+                aria-controls="filters-body"
+                onClick={toggleFilters}
+              >
+                <span
+                  className={`filters-chevron${filtersOpen ? ' is-open' : ''}`}
+                  aria-hidden="true"
+                >
+                  ▸
+                </span>
+                Filters
+              </button>
+            </h2>
             {filterCount > 0 ? (
               <div className="filters-summary">
                 <span>
@@ -855,145 +901,186 @@ export function App() {
             ) : null}
           </div>
 
-          <label className="filter-field">
-            <span>Author</span>
-            <input
-              type="search"
-              value={view.author}
-              onChange={(event) => handleAuthorChange(event.target.value)}
-              placeholder="Filter by author"
-              autoComplete="off"
-              list="author-suggestions"
-            />
-          </label>
-          <datalist id="author-suggestions">
-            {(facets?.authors ?? []).map((author) => (
-              <option key={author.value} value={author.value} />
-            ))}
-          </datalist>
+          <div className="filters-body" id="filters-body" hidden={!filtersOpen}>
+            <label className="filter-field">
+              <span>Author</span>
+              <input
+                type="search"
+                value={view.author}
+                onChange={(event) => handleAuthorChange(event.target.value)}
+                placeholder="Filter by author"
+                autoComplete="off"
+                list="author-suggestions"
+              />
+            </label>
+            <datalist id="author-suggestions">
+              {(facets?.authors ?? []).map((author) => (
+                <option key={author.value} value={author.value} />
+              ))}
+            </datalist>
 
-          <fieldset className="filter-group">
-            <legend>Libib tags</legend>
-            {facets && facets.tags.length > 0 ? (
+            <fieldset className="filter-group">
+              <legend>Libib tags</legend>
+              {facets && facets.tags.length > 0 ? (
+                <div className="filter-options">
+                  {facets.tags.map((tag) => (
+                    <label className="filter-option" key={tag.value}>
+                      <input
+                        type="checkbox"
+                        checked={view.tags.includes(tag.value)}
+                        onChange={() => toggleTag(tag.value)}
+                      />
+                      <span>{tag.value}</span>
+                      <span className="filter-option-count">{tag.count}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted filter-empty">No tags yet.</p>
+              )}
+            </fieldset>
+
+            <fieldset className="filter-group">
+              <legend>Subjects</legend>
+              <button
+                type="button"
+                className="facet-toggle"
+                aria-expanded={subjectsOpen}
+                aria-controls="subject-options"
+                onClick={toggleSubjects}
+              >
+                <span className="visually-hidden">Subjects: </span>
+                <span>{subjectFacetSummary(view.subjects)}</span>
+                <span className="facet-toggle-action" aria-hidden="true">
+                  {subjectsOpen ? 'Hide' : 'Show'}
+                </span>
+              </button>
+              <div
+                className="filter-options filter-options-subjects"
+                id="subject-options"
+                hidden={!subjectsOpen}
+              >
+                {facets && facets.subjects.length > 0 ? (
+                  facets.subjects.map((subject) => (
+                    <label className="filter-option" key={subject.value}>
+                      <input
+                        type="checkbox"
+                        checked={view.subjects.includes(subject.value)}
+                        onChange={() => toggleSubject(subject.value)}
+                      />
+                      <span>{subject.value}</span>
+                      <span className="filter-option-count">{subject.count}</span>
+                    </label>
+                  ))
+                ) : (
+                  <p className="muted filter-empty">No subjects yet.</p>
+                )}
+              </div>
+            </fieldset>
+
+            <fieldset className="filter-group">
+              <legend>Holds</legend>
               <div className="filter-options">
-                {facets.tags.map((tag) => (
-                  <label className="filter-option" key={tag.value}>
+                {HOLD_BUCKETS.map((bucket) => (
+                  <label className="filter-option" key={bucket}>
                     <input
                       type="checkbox"
-                      checked={view.tags.includes(tag.value)}
-                      onChange={() => toggleTag(tag.value)}
+                      checked={view.holds.includes(bucket)}
+                      onChange={() => toggleHold(bucket)}
                     />
-                    <span>{tag.value}</span>
-                    <span className="filter-option-count">{tag.count}</span>
+                    <span>{HOLD_BUCKET_LABELS[bucket]}</span>
                   </label>
                 ))}
               </div>
-            ) : (
-              <p className="muted filter-empty">No tags yet.</p>
-            )}
-          </fieldset>
+            </fieldset>
 
-          <fieldset className="filter-group">
-            <legend>Subjects</legend>
-            {facets && facets.subjects.length > 0 ? (
-              <div className="filter-options filter-options-subjects">
-                {facets.subjects.map((subject) => (
-                  <label className="filter-option" key={subject.value}>
-                    <input
-                      type="checkbox"
-                      checked={view.subjects.includes(subject.value)}
-                      onChange={() => toggleSubject(subject.value)}
-                    />
-                    <span>{subject.value}</span>
-                    <span className="filter-option-count">{subject.count}</span>
-                  </label>
-                ))}
-              </div>
-            ) : (
-              <p className="muted filter-empty">No subjects yet.</p>
-            )}
-          </fieldset>
-
-          <fieldset className="filter-group">
-            <legend>Holds</legend>
-            <div className="filter-options">
-              {HOLD_BUCKETS.map((bucket) => (
-                <label className="filter-option" key={bucket}>
+            <fieldset className="filter-group">
+              <legend>Minimum rating</legend>
+              <div className="filter-options filter-range">
+                <label className="filter-field">
+                  <span>Rating at least</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    value={view.ratingMin}
+                    onChange={(event) =>
+                      handleRatingMinChange(event.target.value)
+                    }
+                    placeholder="Any"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="clear-group"
+                  onClick={clearRating}
+                  disabled={!view.ratingMin.trim()}
+                  aria-label="Clear rating minimum"
+                >
+                  Clear
+                </button>
+                <label className="filter-toggle">
                   <input
                     type="checkbox"
-                    checked={view.holds.includes(bucket)}
-                    onChange={() => toggleHold(bucket)}
+                    checked={view.includeLowSample}
+                    onChange={toggleLowSample}
                   />
-                  <span>{HOLD_BUCKET_LABELS[bucket]}</span>
+                  <span>Include low-sample ratings</span>
                 </label>
-              ))}
-            </div>
-          </fieldset>
+              </div>
+            </fieldset>
 
-          <fieldset className="filter-group">
-            <legend>Minimum rating</legend>
-            <div className="filter-options filter-range">
-              <label className="filter-field">
-                <span>Rating at least</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="5"
-                  step="0.1"
-                  value={view.ratingMin}
-                  onChange={(event) =>
-                    handleRatingMinChange(event.target.value)
-                  }
-                  placeholder="Any"
-                />
-              </label>
-              <label className="filter-toggle">
-                <input
-                  type="checkbox"
-                  checked={view.includeLowSample}
-                  onChange={toggleLowSample}
-                />
-                <span>Include low-sample ratings</span>
-              </label>
-            </div>
-          </fieldset>
+            <fieldset className="filter-group">
+              <legend>Page count</legend>
+              <div className="filter-options filter-range">
+                <label className="filter-field">
+                  <span>At least</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={view.pagesMin}
+                    onChange={(event) =>
+                      handlePagesMinChange(event.target.value)
+                    }
+                    placeholder="Any"
+                  />
+                </label>
+                <label className="filter-field">
+                  <span>At most</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={view.pagesMax}
+                    onChange={(event) =>
+                      handlePagesMaxChange(event.target.value)
+                    }
+                    placeholder="Any"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="clear-group"
+                  onClick={clearPages}
+                  disabled={!view.pagesMin.trim() && !view.pagesMax.trim()}
+                  aria-label="Clear page count bounds"
+                >
+                  Clear
+                </button>
+              </div>
+            </fieldset>
 
-          <fieldset className="filter-group">
-            <legend>Page count</legend>
-            <div className="filter-options filter-range">
-              <label className="filter-field">
-                <span>At least</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={view.pagesMin}
-                  onChange={(event) => handlePagesMinChange(event.target.value)}
-                  placeholder="Any"
-                />
-              </label>
-              <label className="filter-field">
-                <span>At most</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={view.pagesMax}
-                  onChange={(event) => handlePagesMaxChange(event.target.value)}
-                  placeholder="Any"
-                />
-              </label>
-            </div>
-          </fieldset>
-
-          <label className="filter-toggle">
-            <input
-              type="checkbox"
-              checked={view.availableOnly}
-              onChange={toggleAvailableOnly}
-            />
-            <span>Available only</span>
-          </label>
+            <label className="filter-toggle">
+              <input
+                type="checkbox"
+                checked={view.availableOnly}
+                onChange={toggleAvailableOnly}
+              />
+              <span>Available only</span>
+            </label>
+          </div>
         </section>
 
         {loading ? (
