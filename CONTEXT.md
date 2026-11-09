@@ -91,3 +91,9 @@ _Avoid_: Synced, updated
 **Crawl cycle**:
 One full pass over every book record in the catalogue.
 _Avoid_: Sync, run
+
+## Presentation
+
+**Badge**:
+A computed label attached to a book record for display — Available, Unavailable, Low sample, or unmatched. Not authored by the Librarian.
+_Avoid_: Tag, label, status

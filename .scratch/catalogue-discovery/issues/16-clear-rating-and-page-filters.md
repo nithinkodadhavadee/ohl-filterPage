@@ -1,11 +1,13 @@
 # 16: Clear Rating and page-count filters
 
-**What to build:** A Patron can clear the Rating and page-count filters with one action, instead of typing 0 into each box, and the URL and results update immediately.
+**What to build:** A Patron can clear the Rating and page-count filters with one per-group action instead of typing 0 into each box. Empty inputs mean no bound, and 0 remains a meaningful value where it applies (page minimum).
 
 **Blocked by:** None (can start immediately)
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
-- [ ] A clear action removes both page-count bounds and the Rating minimum in one step.
-- [ ] The action is disabled or hidden when those filters are already empty.
-- [ ] The URL updates, and results update without a manual reload.
+- [ ] Empty Rating and page-count inputs mean "no bound".
+- [ ] A per-group Clear resets the Rating minimum and both page-count bounds in one step.
+- [ ] 0 remains a real value for the page-count minimum.
+- [ ] The control is disabled or hidden when those filters are already empty.
+- [ ] The URL and results update without a manual reload.

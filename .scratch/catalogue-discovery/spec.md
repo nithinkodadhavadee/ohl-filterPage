@@ -303,17 +303,28 @@ None — the repository is greenfield. These tests establish the conventions: an
 - Enrichment is a one-shot, Librarian-triggered operation by design; Ratings will drift until refreshed. This is accepted; see ADR-0005.
 - The issue tracker for this repository is local markdown: specs and issues live under `.scratch/<feature-slug>/`, with triage state recorded as a `Status:` line. See `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`.
 
-## Post-v1 Backlog (initial thoughts)
+## Post-v1 Backlog (pass 2, decided)
 
-Recorded from the Librarian after the v1 prototype. These are deliberately **not implemented**; each is tracked as a ticket (12–19). They stay in the spec so a rewrite or a later version does not lose them.
+Recorded after the v1 prototype and resolved in a grilling round. Tickets 12–19 are `ready-for-agent`. Nothing here is implemented yet.
 
-1. **Libib book links do not open the book.** "View on Libib" takes the Patron to the library home page; Libib appears to redirect shared book links to the collection page. Investigate whether a stable item permalink exists before changing the control. Ticket 12.
-2. **Explain derived badges on hover.** Available, Unavailable and Low sample — and any later derived badge — should describe themselves when hovered or focused, in the grid, table and detail view. Ticket 13.
-3. **Collapse the filter panel.** The whole filter section should collapse and expand, defaulting to expanded. Ticket 14.
-4. **Collapse the Subjects facet.** The Subjects list is long; it should collapse and expand separately, defaulting to collapsed. Ticket 15.
-5. **Clear the Rating and page-count filters.** One action should clear these inputs instead of typing 0 into each box. Ticket 16.
-6. **Reset scroll when opening a book.** Opening a second book must start its detail view at the top; the previous book's scroll position must not carry over. Ticket 17.
-7. **Filter unmatched books.** Add a filter to show or hide book records whose enrichment is unmatched. Ticket 18.
-8. **Show where enrichment data comes from.** Everywhere a Rating, Subject or page count appears, add an "i" affordance that explains the data comes from an enrichment source and names it. Ticket 19.
+1. **Libib book links open the book.** Finding: Libib opens an item on initial load via `?solo=<join_id>`, while `?id=` is only handled on browser back/forward — which is why our link lands on the home page. The generated link changes to `?solo=` and is verified against a real book. Ticket 12.
+2. **Badges explain themselves.** The glossary defines a **Badge**: a computed label on a book record. Available, Unavailable, Low sample and Unmatched are Badges; Unmatched is driven by enrichment status, not by missing Rating/Subjects. Desktop: hover or keyboard focus reveals the explanation. Touch: badges in the detail view are tappable; tapping a badge on a grid card still opens the book. Fixed copy:
+   - Available: *At least one copy is on the shelf and not already claimed by the hold queue.*
+   - Unavailable: *Every copy is on loan, or the hold queue has claimed the copies on the shelf.*
+   - Low sample: *Based on fewer than five ratings, so the average can be misleading.*
+   - Unmatched: *No matching record was found in Open Library, so Rating, Subjects and page count are unavailable.*
+
+   Ticket 13.
+3. **Filter panel collapses.** Expanded by default, remembered for the session, never encoded in the URL. Ticket 14.
+4. **Subjects facet collapses.** Collapsed by default, remembered for the session; while collapsed it shows the selected count, the first two selected names and "+N more". Ticket 15.
+5. **Rating and page-count filters clear.** Empty inputs mean no bound; a per-group Clear resets the Rating minimum and both page bounds; 0 stays a meaningful page minimum. Ticket 16.
+6. **Detail scroll resets.** Every open starts at the top; no scroll carry-over between books. Ticket 17.
+7. **Unmatched filter.** Tri-state All books / Hide unmatched / Only unmatched, default All, using enrichment status and encoded in the URL. Ticket 18.
+8. **Enrichment source hints.** Detail view only. An "i" sits next to the Rating heading, the Subjects heading, and a new Page count heading (page count moves out of the Publication body). The source name comes from the API, not hardcoded. Tailored copy:
+   - Rating: *Sourced from Open Library. Ratings may be sparse or describe a different edition.*
+   - Subjects: *Sourced from Open Library; raw subjects, not genres.*
+   - Page count: *Sourced from Open Library; may be missing or describe a different edition.*
+
+   No "i" in the grid or table; badges use their own hover/tap explanation instead. Ticket 19.
 
 The original list ended at item 9 with no content; nothing was recorded for it.
