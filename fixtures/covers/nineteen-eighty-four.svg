@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 455" role="img" aria-label="Nineteen Eighty-Four placeholder cover">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f2937" />
+      <stop offset="1" stop-color="#7f1d1d" />
+    </linearGradient>
+  </defs>
+  <rect width="300" height="455" fill="url(#g)" />
+  <circle cx="150" cy="190" r="78" fill="none" stroke="#f3f4f6" stroke-width="7" />
+  <text x="150" y="205" font-family="Georgia, serif" font-size="46" fill="#f3f4f6" text-anchor="middle">1984</text>
+  <text x="150" y="330" font-family="Georgia, serif" font-size="24" fill="#f3f4f6" text-anchor="middle">George Orwell</text>
+  <text x="150" y="410" font-family="Helvetica, Arial, sans-serif" font-size="13" letter-spacing="4" fill="#d1d5db" text-anchor="middle">NINETEEN EIGHTY-FOUR</text>
+</svg>

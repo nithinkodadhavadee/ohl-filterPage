@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 455" role="img" aria-label="In Cold Blood placeholder cover">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#111827" />
+      <stop offset="1" stop-color="#374151" />
+    </linearGradient>
+  </defs>
+  <rect width="300" height="455" fill="url(#g)" />
+  <path d="M55 300 L245 300 L225 360 L75 360 Z" fill="#991b1b" />
+  <path d="M75 360 L225 360 L210 390 L90 390 Z" fill="#7f1d1d" />
+  <text x="150" y="130" font-family="Georgia, serif" font-size="34" fill="#f9fafb" text-anchor="middle">In Cold</text>
+  <text x="150" y="172" font-family="Georgia, serif" font-size="34" fill="#f9fafb" text-anchor="middle">Blood</text>
+  <text x="150" y="425" font-family="Helvetica, Arial, sans-serif" font-size="13" letter-spacing="4" fill="#d1d5db" text-anchor="middle">TRUMAN CAPOTE</text>
+</svg>

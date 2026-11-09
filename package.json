@@ -1,0 +1,40 @@
+{
+  "name": "open-house-library-discovery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only discovery page over the Open House Library Libib catalogue",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,ui -c blue,magenta \"npm:dev:api\" \"npm:dev:ui\"",
+    "dev:api": "tsx watch src/server/index.ts",
+    "dev:ui": "vite",
+    "build": "npm run build:server && npm run build:ui",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:ui": "vite build",
+    "start": "node dist/server/index.js",
+    "seed": "tsx src/server/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.10",
+    "fastify": "^5.12.8",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.7",
+    "vitest": "^5.1.0"
+  }
+}

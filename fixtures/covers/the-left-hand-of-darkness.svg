@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 455" role="img" aria-label="The Left Hand of Darkness placeholder cover">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c4a6e" />
+      <stop offset="1" stop-color="#312e81" />
+    </linearGradient>
+  </defs>
+  <rect width="300" height="455" fill="url(#g)" />
+  <path d="M0 300 L60 250 L120 300 L180 240 L240 300 L300 260 V455 H0 Z" fill="#e0f2fe" opacity="0.22" />
+  <circle cx="70" cy="86" r="3" fill="#f8fafc" />
+  <circle cx="130" cy="55" r="2" fill="#f8fafc" />
+  <circle cx="220" cy="98" r="2.5" fill="#f8fafc" />
+  <circle cx="255" cy="48" r="2" fill="#f8fafc" />
+  <text x="150" y="200" font-family="Georgia, serif" font-size="28" fill="#f8fafc" text-anchor="middle">The Left Hand</text>
+  <text x="150" y="236" font-family="Georgia, serif" font-size="28" fill="#f8fafc" text-anchor="middle">of Darkness</text>
+  <text x="150" y="420" font-family="Helvetica, Arial, sans-serif" font-size="13" letter-spacing="4" fill="#bae6fd" text-anchor="middle">URSULA K. LE GUIN</text>
+</svg>
