@@ -36,6 +36,25 @@ export interface BooksPage {
   };
 }
 
+export type BookSortField =
+  | 'relevance'
+  | 'title'
+  | 'author'
+  | 'holds'
+  | 'year'
+  | 'random';
+
+export type SortDirection = 'asc' | 'desc';
+
+export interface BooksQuery {
+  limit: number;
+  offset: number;
+  q?: string;
+  sort?: BookSortField;
+  direction?: SortDirection;
+  seed?: string;
+}
+
 interface BookRow {
   join_id: string;
   title: string;
@@ -160,21 +179,341 @@ export function getLastIndexRefreshedAt(db: DatabaseSync): string | null {
   return row<{ value: string | null }>(statement)?.value ?? null;
 }
 
-export function getBooks(
-  db: DatabaseSync,
-  options: { limit: number; offset: number },
-): BooksPage {
-  const total =
-    row<{ total: number }>(db.prepare('SELECT COUNT(*) AS total FROM book_records'))
-      ?.total ?? 0;
+interface SearchFields {
+  text: string;
+  tokens: string[];
+}
 
-  const statement = db.prepare(`
-    SELECT * FROM book_records
-    ORDER BY title COLLATE NOCASE ASC, join_id ASC
-    LIMIT ? OFFSET ?
-  `);
-  const records = rows<BookRow>(statement, options.limit, options.offset);
-  const items = records.map((record) => toBook(db, record));
+interface SearchableBook {
+  title: SearchFields;
+  author: SearchFields;
+  description: SearchFields;
+}
+
+type MatchKind = 'exact' | 'prefix' | 'substring' | 'fuzzy';
+
+interface TermMatch {
+  score: number;
+  kind: MatchKind;
+}
+
+const SORT_FIELDS = new Set<BookSortField>([
+  'relevance',
+  'title',
+  'author',
+  'holds',
+  'year',
+  'random',
+]);
+
+const FIELD_WEIGHTS = {
+  title: 3,
+  author: 2,
+  description: 1,
+} as const;
+
+function normalizeForSearch(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function tokenize(value: string): string[] {
+  return normalizeForSearch(value)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function searchFieldsFor(value: string | null): SearchFields {
+  const text = value ? normalizeForSearch(value) : '';
+  return { text, tokens: text.split(/[^a-z0-9]+/).filter(Boolean) };
+}
+
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + cost,
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+function fuzzyThreshold(length: number): number {
+  if (length < 4) return 0;
+  if (length <= 6) return 1;
+  if (length <= 10) return 2;
+  return 3;
+}
+
+function scoreTerm(term: string, book: SearchableBook): TermMatch | null {
+  let best: TermMatch | null = null;
+
+  const consider = (kind: MatchKind, weight: number, distance = 0): void => {
+    const base =
+      kind === 'exact'
+        ? 100
+        : kind === 'prefix'
+          ? 70
+          : kind === 'substring'
+            ? 50
+            : 40 - distance * 10;
+    const score = base * weight;
+    if (!best || score > best.score) {
+      best = { score, kind };
+    }
+  };
+
+  const fields: Array<[SearchFields, number]> = [
+    [book.title, FIELD_WEIGHTS.title],
+    [book.author, FIELD_WEIGHTS.author],
+    [book.description, FIELD_WEIGHTS.description],
+  ];
+
+  for (const [field, weight] of fields) {
+    if (!field.text) continue;
+
+    if (field.tokens.includes(term)) {
+      consider('exact', weight);
+      continue;
+    }
+
+    if (field.tokens.some((token) => token.startsWith(term))) {
+      consider('prefix', weight);
+      continue;
+    }
+
+    if (field.text.includes(term)) {
+      consider('substring', weight);
+      continue;
+    }
+
+    const threshold = fuzzyThreshold(term.length);
+    if (threshold > 0) {
+      let closest = Number.POSITIVE_INFINITY;
+      for (const token of field.tokens) {
+        if (Math.abs(token.length - term.length) > threshold) continue;
+        const distance = editDistance(term, token);
+        if (distance < closest) closest = distance;
+      }
+      if (closest > 0 && closest <= threshold) {
+        consider('fuzzy', weight, closest);
+      }
+    }
+  }
+
+  return best;
+}
+
+function ftsMatchesByTerm(
+  db: DatabaseSync,
+  terms: string[],
+): Map<string, Set<string> | null> {
+  const matches = new Map<string, Set<string> | null>();
+  const statement = db.prepare(
+    'SELECT join_id FROM books_fts WHERE books_fts MATCH ?',
+  );
+
+  for (const term of terms) {
+    if (term.length < 3) continue;
+    const expression = `"${term.replace(/"/g, '""')}"`;
+    try {
+      const ids = new Set(
+        rows<{ join_id: string }>(statement, expression).map(
+          (entry) => entry.join_id,
+        ),
+      );
+      matches.set(term, ids);
+    } catch {
+      matches.set(term, null);
+    }
+  }
+
+  return matches;
+}
+
+function scoreRecord(
+  record: BookRow,
+  terms: string[],
+  ftsByTerm: Map<string, Set<string> | null>,
+): number | null {
+  const book: SearchableBook = {
+    title: searchFieldsFor(record.title),
+    author: searchFieldsFor(record.author),
+    description: searchFieldsFor(record.description),
+  };
+
+  let total = 0;
+  for (const term of terms) {
+    const match = scoreTerm(term, book);
+    const ftsSet = ftsByTerm.get(term);
+    const ftsHit =
+      ftsSet === undefined || ftsSet === null || ftsSet.has(record.join_id);
+
+    if (term.length >= 3) {
+      if (!ftsHit && match?.kind !== 'fuzzy') return null;
+    } else if (!match) {
+      return null;
+    }
+
+    total += match ? match.score : 1;
+  }
+
+  return total;
+}
+
+function compareText(a: string, b: string): number {
+  const left = a.toLowerCase();
+  const right = b.toLowerCase();
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function compareTitle(a: BookRow, b: BookRow): number {
+  const byTitle = compareText(a.title, b.title);
+  return byTitle !== 0 ? byTitle : compareText(a.join_id, b.join_id);
+}
+
+function seededHash(seed: string, value: string): number {
+  const input = `${seed}:${value}`;
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function sortValue(
+  record: BookRow,
+  field: BookSortField,
+): string | number | null {
+  switch (field) {
+    case 'title':
+      return record.title;
+    case 'author':
+      return record.author;
+    case 'holds':
+      return record.holds;
+    case 'year':
+      return record.year;
+    default:
+      return null;
+  }
+}
+
+function compareRecords(
+  a: BookRow,
+  b: BookRow,
+  sort: BookSortField,
+  direction: SortDirection,
+  relevance: Map<string, number> | null,
+  seed: string,
+): number {
+  if (sort === 'relevance') {
+    const left = relevance?.get(a.join_id) ?? 0;
+    const right = relevance?.get(b.join_id) ?? 0;
+    const byScore = left < right ? -1 : left > right ? 1 : 0;
+    if (byScore !== 0) return direction === 'desc' ? -byScore : byScore;
+    return compareTitle(a, b);
+  }
+
+  if (sort === 'random') {
+    const left = seededHash(seed, a.join_id);
+    const right = seededHash(seed, b.join_id);
+    const byHash = left < right ? -1 : left > right ? 1 : 0;
+    if (byHash !== 0) return direction === 'desc' ? -byHash : byHash;
+    return compareTitle(a, b);
+  }
+
+  const left = sortValue(a, sort);
+  const right = sortValue(b, sort);
+
+  if (left === null && right !== null) return 1;
+  if (right === null && left !== null) return -1;
+
+  if (left !== null && right !== null) {
+    const byValue =
+      typeof left === 'number' && typeof right === 'number'
+        ? left < right
+          ? -1
+          : left > right
+            ? 1
+            : 0
+        : compareText(String(left), String(right));
+    if (byValue !== 0) return direction === 'desc' ? -byValue : byValue;
+  }
+
+  return compareTitle(a, b);
+}
+
+function resolveSort(
+  sort: BookSortField | undefined,
+  hasSearch: boolean,
+): BookSortField {
+  if (sort && SORT_FIELDS.has(sort)) {
+    if (sort === 'relevance' && !hasSearch) return 'title';
+    return sort;
+  }
+  return hasSearch ? 'relevance' : 'title';
+}
+
+function resolveDirection(
+  direction: SortDirection | undefined,
+  sort: BookSortField,
+): SortDirection {
+  if (direction === 'asc' || direction === 'desc') return direction;
+  return sort === 'relevance' ? 'desc' : 'asc';
+}
+
+export function getBooks(db: DatabaseSync, options: BooksQuery): BooksPage {
+  const queryText = options.q?.trim() ?? '';
+  const terms = tokenize(queryText);
+  const hasSearch = terms.length > 0;
+
+  const allRecords = rows<BookRow>(db.prepare('SELECT * FROM book_records'));
+
+  let records = allRecords;
+  let relevance: Map<string, number> | null = null;
+
+  if (hasSearch) {
+    const ftsByTerm = ftsMatchesByTerm(db, terms);
+    relevance = new Map<string, number>();
+    records = [];
+
+    for (const record of allRecords) {
+      const score = scoreRecord(record, terms, ftsByTerm);
+      if (score !== null) {
+        relevance.set(record.join_id, score);
+        records.push(record);
+      }
+    }
+  }
+
+  const sort = resolveSort(options.sort, hasSearch);
+  const direction = resolveDirection(options.direction, sort);
+  const seed = options.seed ?? '';
+
+  records.sort((a, b) =>
+    compareRecords(a, b, sort, direction, relevance, seed),
+  );
+
+  const total = records.length;
+  const page = records.slice(options.offset, options.offset + options.limit);
+  const items = page.map((record) => toBook(db, record));
   const consumed = options.offset + items.length;
 
   return {

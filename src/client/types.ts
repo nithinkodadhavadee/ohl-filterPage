@@ -25,6 +25,25 @@ export interface Book {
   libibUrl: string;
 }
 
+export type SortField =
+  | 'relevance'
+  | 'title'
+  | 'author'
+  | 'holds'
+  | 'year'
+  | 'random';
+
+export type SortDirection = 'asc' | 'desc';
+
+export interface BooksQuery {
+  q?: string;
+  sort?: SortField;
+  direction?: SortDirection;
+  seed?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface BooksResponse {
   items: Book[];
   total: number;
