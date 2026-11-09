@@ -57,6 +57,10 @@ interface EnrichmentRow {
 
 const LIBIB_BASE_URL = 'https://www.libib.com/u/openhouselibrary';
 
+const ENRICHMENT_SOURCE_LABELS: Record<string, string> = {
+  openlibrary: 'Open Library',
+};
+
 type Statement = ReturnType<DatabaseSync['prepare']>;
 
 function rows<T>(statement: Statement, ...params: SQLInputValue[]): T[] {
@@ -110,6 +114,20 @@ function enrichmentStatusFor(
     default:
       return null;
   }
+}
+
+function enrichmentSourceFor(
+  enrichment: EnrichmentRow | undefined,
+): string | null {
+  const source = enrichment?.source?.trim();
+  if (!source) return null;
+
+  const known = ENRICHMENT_SOURCE_LABELS[source.toLowerCase()];
+  if (known) return known;
+
+  return source
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function getTags(db: DatabaseSync, joinId: string): string[] {
@@ -186,6 +204,7 @@ function toBook(db: DatabaseSync, record: BookRow): Book {
     rating: ratingFor(enrichment),
     pageCount: enrichment?.page_count ?? null,
     enrichmentStatus: enrichmentStatusFor(enrichment),
+    enrichmentSource: enrichmentSourceFor(enrichment),
     refreshedAt: record.last_refreshed_at,
     libibUrl: `${LIBIB_BASE_URL}?id=${encodeURIComponent(record.join_id)}`,
   };

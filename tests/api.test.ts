@@ -108,6 +108,7 @@ describe('GET /api/books', () => {
       available: true,
       pageCount: 328,
       rating: { average: 4.28, count: 449, lowSample: false },
+      enrichmentSource: 'Open Library',
       libibUrl: 'https://www.libib.com/u/openhouselibrary?id=167806440',
     });
     expect(book.coverUrl).toBe('/covers/nineteen-eighty-four.svg');
@@ -177,6 +178,7 @@ describe('GET /api/books', () => {
     expect(book.rating).toBeNull();
     expect(book.subjects).toEqual([]);
     expect(book.pageCount).toBeNull();
+    expect(book.enrichmentSource).toBeNull();
     expect(book.author).toBeNull();
     expect(book.tags).toEqual(['nonfiction', 'true crime']);
   });

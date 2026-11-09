@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { FocusEvent, KeyboardEvent, ReactNode } from 'react';
 import { fetchBook, fetchBooks, fetchFacets, fetchStatus } from './api';
 import {
   HOLD_BUCKETS,
@@ -14,6 +15,14 @@ import {
   type SortDirection,
   type SortField,
 } from '../shared/contract';
+import {
+  BADGE_EXPLANATIONS,
+  BADGE_LABELS,
+  ENRICHMENT_HINT_LABELS,
+  enrichmentHintText,
+  type BadgeKind,
+  type EnrichmentHintField,
+} from '../shared/explanations';
 import type { CrawlerStatus, ViewMode } from './types';
 
 function formatDate(value: string | null): string {
@@ -76,13 +85,194 @@ function Cover({ book }: { book: Book }) {
   );
 }
 
-function AvailabilityBadge({ book }: { book: Book }) {
+interface ExplanationProps {
+  text: string;
+  idPrefix: string;
+  label: ReactNode;
+  variant: 'badge' | 'info';
+  triggerClassName: string;
+  triggerAriaLabel?: string;
+  tapToOpen?: boolean;
+  keyboardFocusOnly?: boolean;
+}
+
+function Explanation({
+  text,
+  idPrefix,
+  label,
+  variant,
+  triggerClassName,
+  triggerAriaLabel,
+  tapToOpen = false,
+  keyboardFocusOnly = false,
+}: ExplanationProps) {
+  const generatedId = useId();
+  const tooltipId = `${idPrefix}-${generatedId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [open]);
+
+  const handleFocus = (event: FocusEvent<HTMLElement>) => {
+    if (keyboardFocusOnly) {
+      const target = event.target as HTMLElement;
+      let focusVisible = true;
+      try {
+        focusVisible = target.matches(':focus-visible');
+      } catch {
+        focusVisible = true;
+      }
+      if (!focusVisible) return;
+    }
+    setOpen(true);
+  };
+
+  const handleBlur = (event: FocusEvent<HTMLElement>) => {
+    const next = event.relatedTarget as Node | null;
+    if (!next || !wrapperRef.current?.contains(next)) {
+      setOpen(false);
+    }
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') setOpen(false);
+  };
+
+  const triggerProps = {
+    className: triggerClassName,
+    'aria-describedby': tooltipId,
+    onFocus: handleFocus,
+    onBlur: handleBlur,
+    onKeyDown: handleKeyDown,
+  };
+
   return (
     <span
-      className={`availability-badge ${book.available ? 'is-available' : 'is-unavailable'}`}
+      ref={wrapperRef}
+      className={`explanation-wrapper explanation-wrapper-${variant}`}
+      onPointerEnter={(event) => {
+        if (event.pointerType !== 'touch') setOpen(true);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType !== 'touch') setOpen(false);
+      }}
     >
-      {book.available ? 'Available' : 'Unavailable'}
+      {tapToOpen ? (
+        <button
+          type="button"
+          {...triggerProps}
+          aria-label={triggerAriaLabel}
+          onClick={() => setOpen(true)}
+        >
+          {label}
+        </button>
+      ) : (
+        <span {...triggerProps} tabIndex={0}>
+          {label}
+        </span>
+      )}
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className={`explanation-popover${open ? ' is-open' : ''}`}
+      >
+        {text}
+      </span>
     </span>
+  );
+}
+
+type BadgeContext = 'grid' | 'table' | 'detail';
+
+function BookBadge({
+  kind,
+  context,
+}: {
+  kind: BadgeKind;
+  context: BadgeContext;
+}) {
+  return (
+    <Explanation
+      idPrefix={`badge-${kind}`}
+      text={BADGE_EXPLANATIONS[kind]}
+      label={BADGE_LABELS[kind]}
+      variant="badge"
+      triggerClassName={`badge badge-${kind}`}
+      tapToOpen={context === 'detail'}
+      keyboardFocusOnly={context !== 'detail'}
+    />
+  );
+}
+
+function AvailabilityBadge({
+  book,
+  context,
+}: {
+  book: Book;
+  context: BadgeContext;
+}) {
+  return (
+    <BookBadge
+      kind={book.available ? 'available' : 'unavailable'}
+      context={context}
+    />
+  );
+}
+
+function LowSampleBadge({
+  book,
+  context,
+}: {
+  book: Book;
+  context: BadgeContext;
+}) {
+  if (!book.rating?.lowSample) return null;
+  return <BookBadge kind="low-sample" context={context} />;
+}
+
+function UnmatchedBadge({
+  book,
+  context,
+}: {
+  book: Book;
+  context: BadgeContext;
+}) {
+  if (!isUnmatchedBook(book)) return null;
+  return <BookBadge kind="unmatched" context={context} />;
+}
+
+function EnrichmentHint({
+  field,
+  source,
+}: {
+  field: EnrichmentHintField;
+  source: string | null;
+}) {
+  const label = ENRICHMENT_HINT_LABELS[field];
+
+  return (
+    <Explanation
+      idPrefix={`hint-${field}`}
+      text={enrichmentHintText(field, source)}
+      label="i"
+      triggerAriaLabel={`About ${label}`}
+      variant="info"
+      triggerClassName="info-hint"
+      tapToOpen
+    />
   );
 }
 
@@ -91,7 +281,6 @@ function RatingBadge({
   precision = 2,
   emptyLabel = '—',
   className,
-  unknownClassName = 'muted',
   showMax = false,
   showCountLabel = false,
 }: {
@@ -99,7 +288,6 @@ function RatingBadge({
   precision?: number;
   emptyLabel?: string | null;
   className?: string;
-  unknownClassName?: string;
   showMax?: boolean;
   showCountLabel?: boolean;
 }) {
@@ -115,16 +303,7 @@ function RatingBadge({
           ({count}
           {showCountLabel ? ` ${count === 1 ? 'rating' : 'ratings'}` : ''})
         </span>
-        {book.rating.lowSample ? (
-          <span className="sample-badge sample-badge-inline">Low sample</span>
-        ) : null}
       </span>
-    );
-  }
-
-  if (isUnmatchedBook(book)) {
-    return (
-      <span className={unknownClassName}>rating/subjects unknown</span>
     );
   }
 
@@ -161,10 +340,9 @@ function BookDetail({
         <p className="detail-author">{book.author || 'Author unknown'}</p>
 
         <div className="detail-badges">
-          <AvailabilityBadge book={book} />
-          {book.rating?.lowSample ? (
-            <span className="sample-badge">Low sample</span>
-          ) : null}
+          <AvailabilityBadge book={book} context="detail" />
+          <LowSampleBadge book={book} context="detail" />
+          <UnmatchedBadge book={book} context="detail" />
         </div>
 
         <section className="detail-section" aria-labelledby="detail-circulation">
@@ -196,7 +374,17 @@ function BookDetail({
             <span aria-hidden="true"> · </span>
             {book.year ?? 'Year unknown'}
           </p>
-          <p className="muted">
+        </section>
+
+        <section
+          className="detail-section"
+          aria-labelledby="detail-page-count"
+        >
+          <div className="detail-heading-row">
+            <h3 id="detail-page-count">Page count</h3>
+            <EnrichmentHint field="pageCount" source={book.enrichmentSource} />
+          </div>
+          <p>
             {book.pageCount !== null
               ? `${book.pageCount} pages`
               : 'Page count unknown'}
@@ -209,13 +397,15 @@ function BookDetail({
         </section>
 
         <section className="detail-section" aria-labelledby="detail-rating">
-          <h3 id="detail-rating">Rating</h3>
+          <div className="detail-heading-row">
+            <h3 id="detail-rating">Rating</h3>
+            <EnrichmentHint field="rating" source={book.enrichmentSource} />
+          </div>
           <p>
             <RatingBadge
               book={book}
               precision={2}
               emptyLabel="No rating yet."
-              unknownClassName="unknown-note"
               showMax
               showCountLabel
             />
@@ -238,10 +428,11 @@ function BookDetail({
         </section>
 
         <section className="detail-section" aria-labelledby="detail-subjects">
-          <h3 id="detail-subjects">Subjects</h3>
-          {isUnmatchedBook(book) ? (
-            <p className="unknown-note">rating/subjects unknown</p>
-          ) : book.subjects.length > 0 ? (
+          <div className="detail-heading-row">
+            <h3 id="detail-subjects">Subjects</h3>
+            <EnrichmentHint field="subjects" source={book.enrichmentSource} />
+          </div>
+          {book.subjects.length > 0 ? (
             <ul className="chip-list">
               {book.subjects.map((subject) => (
                 <li key={subject} className="chip chip-subject">
@@ -323,11 +514,17 @@ function BookTable({
             </td>
             <td data-label="Author">{book.author || 'Author unknown'}</td>
             <td data-label="Rating">
-              <RatingBadge book={book} precision={2} emptyLabel="—" />
+              <span className="badge-group">
+                <RatingBadge book={book} precision={2} emptyLabel="—" />
+                <LowSampleBadge book={book} context="table" />
+              </span>
             </td>
             <td data-label="Holds">{book.holds}</td>
             <td data-label="Availability">
-              <AvailabilityBadge book={book} />
+              <span className="badge-group">
+                <AvailabilityBadge book={book} context="table" />
+                <UnmatchedBadge book={book} context="table" />
+              </span>
             </td>
             <td data-label="Subjects">
               {book.subjects.length > 0 ? (
@@ -1062,7 +1259,9 @@ export function App() {
                         {book.author || 'Author unknown'}
                       </span>
                       <span className="book-card-meta">
-                        <AvailabilityBadge book={book} />
+                        <AvailabilityBadge book={book} context="grid" />
+                        <LowSampleBadge book={book} context="grid" />
+                        <UnmatchedBadge book={book} context="grid" />
                         <span className="book-card-holds">
                           Holds: {book.holds}
                         </span>
@@ -1071,7 +1270,6 @@ export function App() {
                         book={book}
                         precision={1}
                         className="book-card-rating"
-                        unknownClassName="book-card-rating is-unknown"
                         emptyLabel={null}
                       />
                     </button>
