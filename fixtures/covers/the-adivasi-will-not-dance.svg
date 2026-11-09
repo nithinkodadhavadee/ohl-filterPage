@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 455" role="img" aria-label="The Adivasi Will Not Dance placeholder cover">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#78350f" />
+      <stop offset="1" stop-color="#166534" />
+    </linearGradient>
+  </defs>
+  <rect width="300" height="455" fill="url(#g)" />
+  <path d="M0 330 Q75 280 150 330 T300 330 V455 H0 Z" fill="#052e16" opacity="0.65" />
+  <circle cx="236" cy="82" r="34" fill="#fbbf24" opacity="0.85" />
+  <text x="32" y="150" font-family="Georgia, serif" font-size="30" fill="#fef3c7">The Adivasi</text>
+  <text x="32" y="188" font-family="Georgia, serif" font-size="30" fill="#fef3c7">Will Not</text>
+  <text x="32" y="226" font-family="Georgia, serif" font-size="30" fill="#fef3c7">Dance</text>
+  <text x="32" y="420" font-family="Helvetica, Arial, sans-serif" font-size="13" letter-spacing="2" fill="#d1fae5">HANSDA SOWVENDRA SHEKHAR</text>
+</svg>
