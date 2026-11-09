@@ -4,14 +4,14 @@ import { createAdapterRegistry } from './adapters.js';
 import { loadConfig } from './config.js';
 import { getSampleJoinIds } from './circulation.js';
 import { openDatabase } from './db.js';
+import { parseDelayMs } from './delay.js';
 import {
+  DEFAULT_ENRICH_DELAY_MS,
   enrichBook,
   EnrichmentAdapterRegistry,
   type EnrichmentAdapter,
   type EnrichmentOutcome,
 } from './enrichment.js';
-
-export const DEFAULT_ENRICH_DELAY_MS = 1000;
 
 export interface EnrichCliDeps {
   db: DatabaseSync;
@@ -48,14 +48,6 @@ const USAGE =
 
 const defaultSleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-export function parseEnrichDelay(value: string | undefined): number {
-  if (!value) return DEFAULT_ENRICH_DELAY_MS;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0
-    ? parsed
-    : DEFAULT_ENRICH_DELAY_MS;
-}
 
 export function parseEnrichArgs(argv: readonly string[]): EnrichSelection {
   let selection: EnrichSelection | null = null;
@@ -267,9 +259,10 @@ if (isMain) {
   const config = loadConfig();
   const db = openDatabase(config);
   const adapters = createAdapterRegistry();
-  const delayMs = parseEnrichDelay(
+  const delayMs = parseDelayMs(
     process.env.ENRICH_REQUEST_DELAY_MS ??
       process.env.LIBIB_REQUEST_DELAY_MS,
+    DEFAULT_ENRICH_DELAY_MS,
   );
 
   try {

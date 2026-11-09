@@ -524,6 +524,28 @@ h1 {
   font-size: 0.82rem;
 }
 
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.copy-link {
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.copy-link:hover {
+  background: var(--surface-muted);
+}
+
 .libib-link {
   display: inline-block;
   padding: 0.55rem 1rem;

@@ -7,9 +7,6 @@ import {
   getBook,
   getBooks,
   getFacets,
-  isHoldBucket,
-  type BookSortField,
-  type SortDirection,
 } from './books.js';
 import { loadConfig } from './config.js';
 import {
@@ -18,7 +15,13 @@ import {
   type CrawlerHandle,
 } from './crawler.js';
 import { openDatabase } from './db.js';
-import { fetchBookDetail } from './libib-detail.js';
+import { createLibibAdapter } from './libib.js';
+import {
+  isHoldBucket,
+  isSortField,
+  type SortDirection,
+  type SortField,
+} from '../shared/contract.js';
 
 export interface BuildAppOptions {
   dataDir?: string;
@@ -30,17 +33,6 @@ export interface BuildAppOptions {
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-
-const SORT_FIELDS = new Set<BookSortField>([
-  'relevance',
-  'title',
-  'author',
-  'holds',
-  'year',
-  'rating',
-  'pageCount',
-  'random',
-]);
 
 function parseInteger(
   value: string | undefined,
@@ -56,11 +48,9 @@ function parseInteger(
   return parsed;
 }
 
-function parseSort(value: string | undefined): BookSortField | undefined {
+function parseSort(value: string | undefined): SortField | undefined {
   if (value === undefined) return undefined;
-  return SORT_FIELDS.has(value as BookSortField)
-    ? (value as BookSortField)
-    : undefined;
+  return isSortField(value) ? value : undefined;
 }
 
 function parseNumber(
@@ -187,10 +177,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   if (crawlerEnabled) {
+    const libib = createLibibAdapter({
+      baseUrl: process.env.LIBIB_BASE_URL,
+    });
     crawler = startCrawler({
       db,
-      fetchDetail: (joinId) =>
-        fetchBookDetail(joinId, { baseUrl: process.env.LIBIB_BASE_URL }),
+      fetchDetail: (joinId) => libib.fetchDetail(joinId),
       adapters: createAdapterRegistry(),
       cycleDelayMs: config.crawlerCycleDelayMs,
       maxBackoffMs: config.crawlerMaxBackoffMs,

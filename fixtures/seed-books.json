@@ -26,7 +26,7 @@
         "ratingAverage": 4.28,
         "ratingCount": 449,
         "pageCount": 328,
-        "status": "matched",
+        "status": "enriched",
         "enrichedAt": "2026-11-02T10:00:00.000Z"
       }
     },
@@ -53,7 +53,7 @@
         "ratingAverage": 5,
         "ratingCount": 1,
         "pageCount": 189,
-        "status": "matched",
+        "status": "enriched",
         "enrichedAt": "2026-11-02T10:05:00.000Z"
       }
     },
@@ -80,7 +80,7 @@
         "ratingAverage": 4.1,
         "ratingCount": 88,
         "pageCount": 639,
-        "status": "matched",
+        "status": "enriched",
         "enrichedAt": "2026-11-02T10:10:00.000Z"
       }
     },
@@ -124,7 +124,7 @@
         "ratingAverage": 3.8,
         "ratingCount": 4,
         "pageCount": 304,
-        "status": "matched",
+        "status": "enriched",
         "enrichedAt": "2026-11-02T10:20:00.000Z"
       }
     },
@@ -151,7 +151,7 @@
         "ratingAverage": null,
         "ratingCount": 0,
         "pageCount": null,
-        "status": "matched",
+        "status": "enriched",
         "enrichedAt": "2026-11-02T10:25:00.000Z"
       }
     }

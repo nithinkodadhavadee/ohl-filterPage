@@ -86,14 +86,14 @@ describe('GET /api/books', () => {
     const body = await listBooks();
 
     expect(body.total).toBe(6);
-    expect(body.items).toHaveLength(6);
+    expect(body.books).toHaveLength(6);
     expect(body.nextOffset).toBeNull();
     expect(body.meta.lastIndexRefreshedAt).toBe('2026-11-10T09:30:00.000Z');
   });
 
   it('maps a book record, its enrichment and its Libib link', async () => {
     const body = await listBooks();
-    const book = findByTitle(body.items, 'Nineteen Eighty-Four');
+    const book = findByTitle(body.books, 'Nineteen Eighty-Four');
 
     expect(book).toMatchObject({
       joinId: '167806440',
@@ -123,7 +123,7 @@ describe('GET /api/books', () => {
   it('derives availability from copies, out and holds', async () => {
     const body = await listBooks();
 
-    const available = findByTitle(body.items, 'The Hobbit');
+    const available = findByTitle(body.books, 'The Hobbit');
     expect(available).toMatchObject({
       copies: 4,
       out: 3,
@@ -132,7 +132,7 @@ describe('GET /api/books', () => {
       available: true,
     });
 
-    const held = findByTitle(body.items, 'The Adivasi Will Not Dance');
+    const held = findByTitle(body.books, 'The Adivasi Will Not Dance');
     expect(held).toMatchObject({
       copies: 1,
       out: 0,
@@ -141,7 +141,7 @@ describe('GET /api/books', () => {
       available: false,
     });
 
-    const longQueue = findByTitle(body.items, 'The Left Hand of Darkness');
+    const longQueue = findByTitle(body.books, 'The Left Hand of Darkness');
     expect(longQueue).toMatchObject({
       copies: 1,
       out: 0,
@@ -150,7 +150,7 @@ describe('GET /api/books', () => {
       available: false,
     });
 
-    const fullyOut = findByTitle(body.items, 'Kavalier & Clay');
+    const fullyOut = findByTitle(body.books, 'Kavalier & Clay');
     expect(fullyOut).toMatchObject({
       copies: 2,
       out: 2,
@@ -162,7 +162,7 @@ describe('GET /api/books', () => {
 
   it('decodes entity-encoded titles and tolerates missing metadata', async () => {
     const body = await listBooks();
-    const book = findByTitle(body.items, 'Kavalier & Clay');
+    const book = findByTitle(body.books, 'Kavalier & Clay');
 
     expect(book.title).toBe('Kavalier & Clay');
     expect(book.publisher).toBeNull();
@@ -172,7 +172,7 @@ describe('GET /api/books', () => {
 
   it('labels unmatched records with no rating, subjects or page count', async () => {
     const body = await listBooks();
-    const book = findByTitle(body.items, 'In Cold Blood');
+    const book = findByTitle(body.books, 'In Cold Blood');
 
     expect(book.rating).toBeNull();
     expect(book.subjects).toEqual([]);
@@ -184,13 +184,13 @@ describe('GET /api/books', () => {
   it('flags ratings with fewer than five contributions as low-sample', async () => {
     const body = await listBooks();
 
-    expect(findByTitle(body.items, 'The Adivasi Will Not Dance').rating).toEqual({
+    expect(findByTitle(body.books, 'The Adivasi Will Not Dance').rating).toEqual({
       average: 5,
       count: 1,
       lowSample: true,
     });
     expect(
-      findByTitle(body.items, 'The Left Hand of Darkness').rating,
+      findByTitle(body.books, 'The Left Hand of Darkness').rating,
     ).toEqual({
       average: 3.8,
       count: 4,
@@ -200,16 +200,16 @@ describe('GET /api/books', () => {
 
   it('pages with limit and offset and reports the next offset', async () => {
     const first = await listBooks('?limit=2&offset=0');
-    expect(first.items).toHaveLength(2);
+    expect(first.books).toHaveLength(2);
     expect(first.total).toBe(6);
     expect(first.nextOffset).toBe(2);
 
     const second = await listBooks('?limit=2&offset=2');
-    expect(second.items).toHaveLength(2);
+    expect(second.books).toHaveLength(2);
     expect(second.nextOffset).toBe(4);
 
     const last = await listBooks('?limit=2&offset=4');
-    expect(last.items).toHaveLength(2);
+    expect(last.books).toHaveLength(2);
     expect(last.nextOffset).toBeNull();
   });
 });

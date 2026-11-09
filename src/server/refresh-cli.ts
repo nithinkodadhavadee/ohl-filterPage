@@ -1,29 +1,23 @@
 import { refreshBookDetails } from './circulation.js';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db.js';
-import {
-  DEFAULT_DETAIL_DELAY_MS,
-  fetchBookDetail,
-} from './libib-detail.js';
-
-function parseDelay(value: string | undefined): number {
-  if (!value) return DEFAULT_DETAIL_DELAY_MS;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0
-    ? parsed
-    : DEFAULT_DETAIL_DELAY_MS;
-}
+import { parseDelayMs } from './delay.js';
+import { createLibibAdapter } from './libib.js';
+import { DEFAULT_DETAIL_DELAY_MS } from './libib-detail.js';
 
 const config = loadConfig();
 const db = openDatabase(config);
-const delayMs = parseDelay(process.env.LIBIB_REQUEST_DELAY_MS);
+const delayMs = parseDelayMs(
+  process.env.LIBIB_REQUEST_DELAY_MS,
+  DEFAULT_DETAIL_DELAY_MS,
+);
+const libib = createLibibAdapter({
+  baseUrl: process.env.LIBIB_BASE_URL,
+});
 
 try {
   const result = await refreshBookDetails(db, {
-    fetchDetail: (joinId) =>
-      fetchBookDetail(joinId, {
-        baseUrl: process.env.LIBIB_BASE_URL,
-      }),
+    fetchDetail: (joinId) => libib.fetchDetail(joinId),
     delayMs,
   });
 

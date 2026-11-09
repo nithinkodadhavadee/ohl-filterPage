@@ -1,9 +1,10 @@
 import type {
+  Book,
   BooksQuery,
   BooksResponse,
-  CrawlerStatus,
   FacetsResponse,
-} from './types';
+} from '../shared/contract';
+import type { CrawlerStatus } from './types';
 
 export async function fetchBooks(query: BooksQuery = {}): Promise<BooksResponse> {
   const params = new URLSearchParams();
@@ -30,6 +31,14 @@ export async function fetchBooks(query: BooksQuery = {}): Promise<BooksResponse>
     throw new Error(`Could not load the catalogue (${response.status})`);
   }
   return (await response.json()) as BooksResponse;
+}
+
+export async function fetchBook(joinId: string): Promise<Book> {
+  const response = await fetch(`/api/books/${encodeURIComponent(joinId)}`);
+  if (!response.ok) {
+    throw new Error(`Could not load the book (${response.status})`);
+  }
+  return (await response.json()) as Book;
 }
 
 export async function fetchFacets(): Promise<FacetsResponse> {

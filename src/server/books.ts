@@ -1,89 +1,30 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
+import {
+  defaultDirectionFor,
+  isSortField,
+  type Book,
+  type BooksQuery,
+  type BooksResponse,
+  type EnrichmentStatus,
+  type FacetCount,
+  type FacetsResponse,
+  type HoldBucket,
+  type Rating,
+  type SortDirection,
+  type SortField,
+} from '../shared/contract.js';
 
-export interface Rating {
-  average: number;
-  count: number;
-  lowSample: boolean;
-}
-
-export interface Book {
-  joinId: string;
-  title: string;
-  author: string | null;
-  coverUrl: string | null;
-  publisher: string | null;
-  year: number | null;
-  description: string | null;
-  copies: number;
-  out: number;
-  holds: number;
-  onShelf: number;
-  available: boolean;
-  tags: string[];
-  subjects: string[];
-  rating: Rating | null;
-  pageCount: number | null;
-  refreshedAt: string | null;
-  libibUrl: string;
-}
-
-export interface BooksPage {
-  items: Book[];
-  total: number;
-  nextOffset: number | null;
-  meta: {
-    lastIndexRefreshedAt: string | null;
-  };
-}
-
-export type BookSortField =
-  | 'relevance'
-  | 'title'
-  | 'author'
-  | 'holds'
-  | 'year'
-  | 'rating'
-  | 'pageCount'
-  | 'random';
-
-export type SortDirection = 'asc' | 'desc';
-
-export const HOLD_BUCKETS = ['0', '1-2', '3-5', '6+'] as const;
-
-export type HoldBucket = (typeof HOLD_BUCKETS)[number];
-
-export function isHoldBucket(value: string): value is HoldBucket {
-  return (HOLD_BUCKETS as readonly string[]).includes(value);
-}
-
-export interface BooksQuery {
-  limit: number;
-  offset: number;
-  q?: string;
-  sort?: BookSortField;
-  direction?: SortDirection;
-  seed?: string;
-  author?: string;
-  tags?: string[];
-  subjects?: string[];
-  holds?: HoldBucket[];
-  availableOnly?: boolean;
-  ratingMin?: number;
-  includeLowSample?: boolean;
-  pagesMin?: number;
-  pagesMax?: number;
-}
-
-export interface FacetCount {
-  value: string;
-  count: number;
-}
-
-export interface FacetsResponse {
-  tags: FacetCount[];
-  authors: FacetCount[];
-  subjects: FacetCount[];
-}
+export type {
+  Book,
+  BooksQuery,
+  BooksResponse,
+  FacetCount,
+  FacetsResponse,
+  HoldBucket,
+  Rating,
+  SortDirection,
+  SortField,
+} from '../shared/contract.js';
 
 interface BookRow {
   join_id: string;
@@ -153,6 +94,22 @@ function ratingFor(enrichment: EnrichmentRow | undefined): Rating | null {
     count: enrichment.rating_count,
     lowSample: enrichment.rating_count < 5,
   };
+}
+
+function enrichmentStatusFor(
+  enrichment: EnrichmentRow | undefined,
+): EnrichmentStatus | null {
+  switch (enrichment?.status) {
+    case 'enriched':
+    case 'matched':
+      return 'enriched';
+    case 'unmatched':
+      return 'unmatched';
+    case 'failed':
+      return 'failed';
+    default:
+      return null;
+  }
 }
 
 function getTags(db: DatabaseSync, joinId: string): string[] {
@@ -228,6 +185,7 @@ function toBook(db: DatabaseSync, record: BookRow): Book {
     subjects: getSubjects(db, record.join_id),
     rating: ratingFor(enrichment),
     pageCount: enrichment?.page_count ?? null,
+    enrichmentStatus: enrichmentStatusFor(enrichment),
     refreshedAt: record.last_refreshed_at,
     libibUrl: `${LIBIB_BASE_URL}?id=${encodeURIComponent(record.join_id)}`,
   };
@@ -257,17 +215,6 @@ interface TermMatch {
   score: number;
   kind: MatchKind;
 }
-
-const SORT_FIELDS = new Set<BookSortField>([
-  'relevance',
-  'title',
-  'author',
-  'holds',
-  'year',
-  'rating',
-  'pageCount',
-  'random',
-]);
 
 const FIELD_WEIGHTS = {
   title: 3,
@@ -462,7 +409,7 @@ function seededHash(seed: string, value: string): number {
 
 function sortValue(
   record: BookRow,
-  field: BookSortField,
+  field: SortField,
   enrichmentByJoinId: Map<string, EnrichmentRow>,
 ): string | number | null {
   switch (field) {
@@ -486,7 +433,7 @@ function sortValue(
 function compareRecords(
   a: BookRow,
   b: BookRow,
-  sort: BookSortField,
+  sort: SortField,
   direction: SortDirection,
   relevance: Map<string, number> | null,
   seed: string,
@@ -530,10 +477,10 @@ function compareRecords(
 }
 
 function resolveSort(
-  sort: BookSortField | undefined,
+  sort: SortField | undefined,
   hasSearch: boolean,
-): BookSortField {
-  if (sort && SORT_FIELDS.has(sort)) {
+): SortField {
+  if (sort && isSortField(sort)) {
     if (sort === 'relevance' && !hasSearch) return 'title';
     return sort;
   }
@@ -542,13 +489,18 @@ function resolveSort(
 
 function resolveDirection(
   direction: SortDirection | undefined,
-  sort: BookSortField,
+  sort: SortField,
 ): SortDirection {
   if (direction === 'asc' || direction === 'desc') return direction;
-  return sort === 'relevance' ? 'desc' : 'asc';
+  return defaultDirectionFor(sort);
 }
 
-export function getBooks(db: DatabaseSync, options: BooksQuery): BooksPage {
+export function getBooks(
+  db: DatabaseSync,
+  options: BooksQuery,
+): BooksResponse {
+  const offset = options.offset ?? 0;
+  const limit = options.limit ?? 200;
   const queryText = options.q?.trim() ?? '';
   const terms = tokenize(queryText);
   const hasSearch = terms.length > 0;
@@ -642,12 +594,12 @@ export function getBooks(db: DatabaseSync, options: BooksQuery): BooksPage {
   );
 
   const total = records.length;
-  const page = records.slice(options.offset, options.offset + options.limit);
-  const items = page.map((record) => toBook(db, record));
-  const consumed = options.offset + items.length;
+  const page = records.slice(offset, offset + limit);
+  const books = page.map((record) => toBook(db, record));
+  const consumed = offset + books.length;
 
   return {
-    items,
+    books,
     total,
     nextOffset: consumed < total ? consumed : null,
     meta: {

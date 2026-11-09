@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchBooks, fetchFacets, fetchStatus } from './api';
-import type {
-  Book,
-  BooksResponse,
-  CrawlerStatus,
-  FacetsResponse,
-  HoldBucket,
-  SortDirection,
-  SortField,
-  ViewMode,
-} from './types';
+import { fetchBook, fetchBooks, fetchFacets, fetchStatus } from './api';
+import {
+  HOLD_BUCKETS,
+  SORT_FIELDS,
+  defaultDirectionFor,
+  isHoldBucket,
+  isSortField,
+  isUnmatchedBook,
+  type Book,
+  type BooksResponse,
+  type FacetsResponse,
+  type HoldBucket,
+  type SortDirection,
+  type SortField,
+} from '../shared/contract';
+import type { CrawlerStatus, ViewMode } from './types';
 
 function formatDate(value: string | null): string {
   if (!value) return 'unknown';
@@ -71,10 +76,6 @@ function Cover({ book }: { book: Book }) {
   );
 }
 
-function isUnmatched(book: Book): boolean {
-  return book.rating === null && book.subjects.length === 0;
-}
-
 function AvailabilityBadge({ book }: { book: Book }) {
   return (
     <span
@@ -85,8 +86,70 @@ function AvailabilityBadge({ book }: { book: Book }) {
   );
 }
 
-function BookDetail({ book }: { book: Book }) {
-  const unmatched = isUnmatched(book);
+function RatingBadge({
+  book,
+  precision = 2,
+  emptyLabel = '—',
+  className,
+  unknownClassName = 'muted',
+  showMax = false,
+  showCountLabel = false,
+}: {
+  book: Book;
+  precision?: number;
+  emptyLabel?: string | null;
+  className?: string;
+  unknownClassName?: string;
+  showMax?: boolean;
+  showCountLabel?: boolean;
+}) {
+  if (book.rating) {
+    const count = book.rating.count;
+    return (
+      <span className={className ?? 'rating-cell'}>
+        {showMax ? null : <span aria-hidden="true">★</span>}{' '}
+        {book.rating.average.toFixed(precision)}
+        {showMax ? ' / 5' : null}
+        <span className="muted">
+          {' '}
+          ({count}
+          {showCountLabel ? ` ${count === 1 ? 'rating' : 'ratings'}` : ''})
+        </span>
+        {book.rating.lowSample ? (
+          <span className="sample-badge sample-badge-inline">Low sample</span>
+        ) : null}
+      </span>
+    );
+  }
+
+  if (isUnmatchedBook(book)) {
+    return (
+      <span className={unknownClassName}>rating/subjects unknown</span>
+    );
+  }
+
+  if (emptyLabel === null) return null;
+  return <span className={className ?? 'muted'}>{emptyLabel}</span>;
+}
+
+function BookDetail({
+  book,
+  permalink,
+}: {
+  book: Book;
+  permalink: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = async () => {
+    if (!navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(permalink);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   return (
     <div className="detail-layout">
@@ -147,25 +210,16 @@ function BookDetail({ book }: { book: Book }) {
 
         <section className="detail-section" aria-labelledby="detail-rating">
           <h3 id="detail-rating">Rating</h3>
-          {unmatched ? (
-            <p className="unknown-note">rating/subjects unknown</p>
-          ) : book.rating ? (
-            <p>
-              {book.rating.average.toFixed(2)} / 5
-              <span className="muted">
-                {' '}
-                ({book.rating.count}{' '}
-                {book.rating.count === 1 ? 'rating' : 'ratings'})
-              </span>
-              {book.rating.lowSample ? (
-                <span className="sample-badge sample-badge-inline">
-                  Low sample
-                </span>
-              ) : null}
-            </p>
-          ) : (
-            <p className="muted">No rating yet.</p>
-          )}
+          <p>
+            <RatingBadge
+              book={book}
+              precision={2}
+              emptyLabel="No rating yet."
+              unknownClassName="unknown-note"
+              showMax
+              showCountLabel
+            />
+          </p>
         </section>
 
         <section className="detail-section" aria-labelledby="detail-tags">
@@ -185,7 +239,7 @@ function BookDetail({ book }: { book: Book }) {
 
         <section className="detail-section" aria-labelledby="detail-subjects">
           <h3 id="detail-subjects">Subjects</h3>
-          {unmatched ? (
+          {isUnmatchedBook(book) ? (
             <p className="unknown-note">rating/subjects unknown</p>
           ) : book.subjects.length > 0 ? (
             <ul className="chip-list">
@@ -204,32 +258,24 @@ function BookDetail({ book }: { book: Book }) {
           <p className="muted">
             This record refreshed {formatDate(book.refreshedAt)}
           </p>
-          <a
-            className="libib-link"
-            href={book.libibUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            View on Libib
-          </a>
+          <div className="detail-actions">
+            <button type="button" className="copy-link" onClick={copyLink}>
+              {copied ? 'Link copied' : 'Copy link'}
+            </button>
+            <a
+              className="libib-link"
+              href={book.libibUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View on Libib
+            </a>
+          </div>
         </footer>
       </div>
     </div>
   );
 }
-
-const SORT_FIELDS: SortField[] = [
-  'relevance',
-  'title',
-  'author',
-  'holds',
-  'year',
-  'rating',
-  'pageCount',
-  'random',
-];
-
-const HOLD_BUCKETS: HoldBucket[] = ['0', '1-2', '3-5', '6+'];
 
 const HOLD_BUCKET_LABELS: Record<HoldBucket, string> = {
   '0': 'None (0)',
@@ -277,21 +323,7 @@ function BookTable({
             </td>
             <td data-label="Author">{book.author || 'Author unknown'}</td>
             <td data-label="Rating">
-              {book.rating ? (
-                <span className="rating-cell">
-                  ★ {book.rating.average.toFixed(2)}
-                  <span className="muted"> ({book.rating.count})</span>
-                  {book.rating.lowSample ? (
-                    <span className="sample-badge sample-badge-inline">
-                      Low sample
-                    </span>
-                  ) : null}
-                </span>
-              ) : isUnmatched(book) ? (
-                <span className="muted">rating/subjects unknown</span>
-              ) : (
-                <span className="muted">—</span>
-              )}
+              <RatingBadge book={book} precision={2} emptyLabel="—" />
             </td>
             <td data-label="Holds">{book.holds}</td>
             <td data-label="Availability">
@@ -346,18 +378,14 @@ function createSeed(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function defaultDirection(sort: SortField): SortDirection {
-  return sort === 'relevance' ? 'desc' : 'asc';
-}
-
 function parseViewState(search: string): ViewState {
   const params = new URLSearchParams(search);
   const q = (params.get('q') ?? '').trim();
   const rawSort = params.get('sort');
   let sort: SortField = q ? 'relevance' : 'title';
 
-  if (rawSort && (SORT_FIELDS as string[]).includes(rawSort)) {
-    sort = rawSort as SortField;
+  if (rawSort && isSortField(rawSort)) {
+    sort = rawSort;
   }
   if (!q && sort === 'relevance') sort = 'title';
 
@@ -365,7 +393,7 @@ function parseViewState(search: string): ViewState {
   const direction: SortDirection =
     rawDirection === 'asc' || rawDirection === 'desc'
       ? rawDirection
-      : defaultDirection(sort);
+      : defaultDirectionFor(sort);
 
   const tags = [...new Set(params.getAll('tag').filter(Boolean))];
   const subjects = [...new Set(params.getAll('subject').filter(Boolean))];
@@ -373,9 +401,7 @@ function parseViewState(search: string): ViewState {
     ...new Set(
       params
         .getAll('holds')
-        .filter((value): value is HoldBucket =>
-          (HOLD_BUCKETS as string[]).includes(value),
-        ),
+        .filter((value): value is HoldBucket => isHoldBucket(value)),
     ),
   ];
 
@@ -450,6 +476,17 @@ function viewToUrl(view: ViewState): string {
     : window.location.pathname;
 }
 
+function bookPermalink(view: ViewState, joinId: string): string {
+  const url = new URL(viewToUrl(view), window.location.href);
+  url.searchParams.set('book', joinId);
+  return url.toString();
+}
+
+function readBookParam(search: string): string | null {
+  const value = new URLSearchParams(search).get('book')?.trim();
+  return value ? value : null;
+}
+
 export function App() {
   const [view, setView] = useState<ViewState>(() =>
     ensureSeed(parseViewState(window.location.search)),
@@ -514,6 +551,22 @@ export function App() {
   }, [reloadToken]);
 
   useEffect(() => {
+    const joinId = readBookParam(window.location.search);
+    if (!joinId) return;
+    let cancelled = false;
+    fetchBook(joinId)
+      .then((book) => {
+        if (!cancelled) setSelected(book);
+      })
+      .catch(() => {
+        // A stale book link should not stop the catalogue from rendering.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const onPopState = () => {
       const next = ensureSeed(parseViewState(window.location.search));
       setView(next);
@@ -522,6 +575,15 @@ export function App() {
         if (params.get('seed') !== next.seed) {
           window.history.replaceState(null, '', viewToUrl(next));
         }
+      }
+
+      const joinId = readBookParam(window.location.search);
+      if (joinId) {
+        fetchBook(joinId)
+          .then((book) => setSelected(book))
+          .catch(() => setSelected(null));
+      } else {
+        setSelected(null);
       }
     };
 
@@ -604,9 +666,9 @@ export function App() {
     let direction = view.direction;
 
     if (sort === 'relevance') {
-      direction = 'desc';
+      direction = defaultDirectionFor(sort);
     } else if (view.sort === 'relevance') {
-      direction = 'asc';
+      direction = defaultDirectionFor(sort);
     }
 
     const seed =
@@ -697,10 +759,15 @@ export function App() {
 
   const closeDetail = () => {
     dialogRef.current?.close();
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('book')) {
+      url.searchParams.delete('book');
+      window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+    }
     setSelected(null);
   };
 
-  const books = catalogue?.items ?? [];
+  const books = catalogue?.books ?? [];
   const health = crawlerHealth(status);
   const filterCount = activeFilterCount(view);
 
@@ -749,16 +816,13 @@ export function App() {
                 value={view.sort}
                 onChange={(event) => handleSortChange(event.target.value)}
               >
-                {view.q.trim() ? (
-                  <option value="relevance">Relevance</option>
-                ) : null}
-                <option value="title">Title</option>
-                <option value="author">Author</option>
-                <option value="rating">Rating</option>
-                <option value="holds">Holds</option>
-                <option value="year">Year</option>
-                <option value="pageCount">Page count</option>
-                <option value="random">Random</option>
+                {SORT_FIELDS.filter(
+                  (field) => !field.searchOnly || view.q.trim(),
+                ).map((field) => (
+                  <option key={field.value} value={field.value}>
+                    {field.label}
+                  </option>
+                ))}
               </select>
             </label>
             <button
@@ -799,8 +863,14 @@ export function App() {
               onChange={(event) => handleAuthorChange(event.target.value)}
               placeholder="Filter by author"
               autoComplete="off"
+              list="author-suggestions"
             />
           </label>
+          <datalist id="author-suggestions">
+            {(facets?.authors ?? []).map((author) => (
+              <option key={author.value} value={author.value} />
+            ))}
+          </datalist>
 
           <fieldset className="filter-group">
             <legend>Libib tags</legend>
@@ -997,24 +1067,13 @@ export function App() {
                           Holds: {book.holds}
                         </span>
                       </span>
-                      {book.rating ? (
-                        <span className="book-card-rating">
-                          ★ {book.rating.average.toFixed(1)}
-                          <span className="book-card-rating-count">
-                            {' '}
-                            ({book.rating.count})
-                          </span>
-                          {book.rating.lowSample ? (
-                            <span className="sample-badge sample-badge-inline">
-                              Low sample
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : isUnmatched(book) ? (
-                        <span className="book-card-rating is-unknown">
-                          rating/subjects unknown
-                        </span>
-                      ) : null}
+                      <RatingBadge
+                        book={book}
+                        precision={1}
+                        className="book-card-rating"
+                        unknownClassName="book-card-rating is-unknown"
+                        emptyLabel={null}
+                      />
                     </button>
                   </li>
                 ))}
@@ -1043,7 +1102,10 @@ export function App() {
             >
               ×
             </button>
-            <BookDetail book={selected} />
+            <BookDetail
+              book={selected}
+              permalink={bookPermalink(view, selected.joinId)}
+            />
           </>
         ) : null}
       </dialog>
