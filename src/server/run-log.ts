@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import {
   type RunCounts,
+  type RunHistoryPage,
   type RunKind,
   type RunLogEntry,
   type RunStatus,
@@ -10,6 +11,7 @@ import { errorMessage } from './util.js';
 
 export type {
   RunCounts,
+  RunHistoryPage,
   RunKind,
   RunLogEntry,
   RunStatus,
@@ -58,6 +60,7 @@ export interface ReadRunsOptions {
 }
 
 export const DEFAULT_RUN_HISTORY_LIMIT = 20;
+export const MAX_RUN_HISTORY_LIMIT = 100;
 
 function toIso(value: Date | string): string {
   return typeof value === 'string' ? value : value.toISOString();
@@ -249,6 +252,26 @@ export function readRuns(
     .all(...params) as unknown as RunLogRow[];
 
   return rows.map(toEntry);
+}
+
+export function readRunHistoryPage(
+  db: DatabaseSync,
+  kind: RunKind,
+  options: { limit?: number; offset?: number } = {},
+): RunHistoryPage {
+  const limit = Math.min(
+    MAX_RUN_HISTORY_LIMIT,
+    Math.max(1, Math.trunc(options.limit ?? DEFAULT_RUN_HISTORY_LIMIT)),
+  );
+  const offset = Math.max(0, Math.trunc(options.offset ?? 0));
+  const rows = readRuns(db, kind, { limit: limit + 1, offset });
+  const runs = rows.slice(0, limit);
+
+  return {
+    kind,
+    runs,
+    nextOffset: rows.length > limit ? offset + runs.length : null,
+  };
 }
 
 export function findLatestRun(

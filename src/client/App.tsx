@@ -1460,6 +1460,11 @@ export function App() {
         )}
       </main>
 
+      <footer className="site-footer">
+        <p className="muted">Open House Library catalogue</p>
+        <a href="/status">System status</a>
+      </footer>
+
       <dialog
         ref={dialogRef}
         className="detail-dialog"
