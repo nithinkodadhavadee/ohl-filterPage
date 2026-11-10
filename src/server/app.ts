@@ -33,6 +33,10 @@ import {
 } from './scheduled-scan.js';
 import { snapshotOnSuccess } from './snapshot.js';
 import {
+  getSweepAudit,
+  getSweepAuditCsv,
+} from './sweep-ledger.js';
+import {
   recordFullEnrichment,
   startStartup,
   type StartupDeps,
@@ -73,6 +77,7 @@ export interface BuildAppOptions {
   startup?: boolean;
   startupDeps?: StartupOverrides;
   scheduledDeps?: ScheduledScanOverrides;
+  now?: () => Date;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -142,6 +147,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       enabled: crawlerEnabled,
       startup: startup?.status(),
       scheduled: scheduled?.status(),
+      now: options.now,
     });
 
     return {
@@ -198,6 +204,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   app.get('/api/status', async () => currentStatus());
+
+  app.get('/api/sweep/audit', async () => getSweepAudit(db));
+
+  app.get('/api/sweep/audit.csv', async (_request, reply) => {
+    const { csv } = getSweepAuditCsv(db);
+    return reply.type('text/csv; charset=utf-8').send(csv);
+  });
 
   app.get<{
     Querystring: {

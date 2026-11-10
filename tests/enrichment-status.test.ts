@@ -141,6 +141,7 @@ describe('GET /api/status enrichment summary', () => {
       'enrichment_pass',
       'enrichment_pass',
       'enrichment_pass',
+      'book_sweep_cycle',
       'catalogue_scan',
     ]);
   });

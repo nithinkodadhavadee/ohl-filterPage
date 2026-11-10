@@ -151,6 +151,28 @@ export function finishRun(
   );
 }
 
+export interface UpdateRunInput {
+  counts?: RunCounts | null;
+  error?: string | null;
+}
+
+export function updateRun(
+  db: DatabaseSync,
+  id: number,
+  input: UpdateRunInput,
+): void {
+  if (input.counts !== undefined) {
+    db.prepare(
+      "UPDATE run_log SET counts = ? WHERE id = ? AND status = 'running'",
+    ).run(serializeCounts(input.counts), id);
+  }
+  if (input.error !== undefined) {
+    db.prepare(
+      "UPDATE run_log SET error = ? WHERE id = ? AND status = 'running'",
+    ).run(input.error, id);
+  }
+}
+
 export function recordRun(db: DatabaseSync, input: RecordRunInput): number {
   const startedAt = toIso(input.startedAt ?? new Date());
   const finishedAt = toIso(input.finishedAt ?? input.startedAt ?? new Date());

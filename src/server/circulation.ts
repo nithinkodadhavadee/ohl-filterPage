@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_DETAIL_DELAY_MS, type LibibDetail } from './libib-detail.js';
-import { sleep as defaultSleep } from './util.js';
+import { recordSweepAttempt } from './sweep-ledger.js';
+import { errorMessage, sleep as defaultSleep } from './util.js';
 import { HIDDEN_BOOK_SQL } from './visibility.js';
 
 export interface BookSweepDeps {
@@ -138,14 +139,36 @@ export async function sweepBookDetails(
   for (let index = 0; index < sampleIds.length; index += 1) {
     if (index > 0 && delayMs > 0) await sleep(delayMs);
 
-    const detail = await deps.fetchDetail(sampleIds[index]);
-    if (!detail) {
-      skipped += 1;
-      continue;
-    }
+    const joinId = sampleIds[index];
+    try {
+      const detail = await deps.fetchDetail(joinId);
+      if (!detail) {
+        recordSweepAttempt(db, {
+          joinId,
+          attemptedAt: refreshedAt,
+          outcome: 'skipped',
+          reason: 'Libib returned no detail',
+        });
+        skipped += 1;
+        continue;
+      }
 
-    persistBookDetail(db, detail, refreshedAt);
-    refreshed += 1;
+      persistBookDetail(db, detail, refreshedAt);
+      recordSweepAttempt(db, {
+        joinId,
+        attemptedAt: refreshedAt,
+        outcome: 'refreshed',
+      });
+      refreshed += 1;
+    } catch (error) {
+      recordSweepAttempt(db, {
+        joinId,
+        attemptedAt: refreshedAt,
+        outcome: 'failed',
+        reason: errorMessage(error),
+      });
+      throw error;
+    }
   }
 
   return { sampleSize: sampleIds.length, refreshed, skipped };

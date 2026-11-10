@@ -19,6 +19,7 @@ import {
   enrichmentSourceLabel,
   enrichmentSourceUrl,
 } from '../shared/enrichment.js';
+import { getSweepLedger } from './sweep-ledger.js';
 import { VISIBLE_BOOK_SQL } from './visibility.js';
 
 export type {
@@ -210,6 +211,7 @@ function toBook(db: DatabaseSync, record: BookRow): Book {
     enrichmentSourceUrl: enrichmentSourceUrlFor(enrichment),
     enrichedAt: enrichment?.enriched_at ?? null,
     refreshedAt: record.last_refreshed_at,
+    sweep: getSweepLedger(db, record.join_id),
     libibUrl: `${LIBIB_BASE_URL}?solo=${encodeURIComponent(record.join_id)}`,
   };
 }

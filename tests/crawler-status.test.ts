@@ -22,6 +22,7 @@ beforeEach(async () => {
   state.run('last_index_refreshed_at', '2026-11-10T09:30:00.000Z');
   state.run('crawl_cursor', '2');
   state.run('crawl_cycle_started_at', '2026-11-10T10:00:00.000Z');
+  state.run('crawl_last_progress_at', '2026-11-10T10:04:00.000Z');
   state.run('crawl_last_cycle_started_at', '2026-11-10T09:00:00.000Z');
   state.run('crawl_last_cycle_finished_at', '2026-11-10T09:30:00.000Z');
   state.run('crawl_backoff_attempt', '2');
@@ -29,7 +30,11 @@ beforeEach(async () => {
   state.run('crawl_last_error', 'Libib refused rate');
   db.close();
 
-  app = await buildApp({ dataDir, serveStatic: false });
+  app = await buildApp({
+    dataDir,
+    serveStatic: false,
+    now: () => new Date('2026-11-10T10:05:00.000Z'),
+  });
 });
 
 afterEach(async () => {
@@ -49,10 +54,15 @@ describe('GET /api/status', () => {
         position: 2,
         total: 3,
         startedAt: '2026-11-10T10:00:00.000Z',
+        estimatedRemainingMs: 150000,
+        stalled: false,
       },
       lastCycle: {
         startedAt: '2026-11-10T09:00:00.000Z',
         finishedAt: '2026-11-10T09:30:00.000Z',
+        duration: 1800000,
+        counts: null,
+        lastError: null,
       },
       backoff: {
         attempt: 2,
