@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export interface AppConfig {
+  host: string;
   port: number;
   dataDir: string;
   dbPath: string;
@@ -17,6 +18,7 @@ export interface AppConfig {
 }
 
 export interface ConfigOverrides {
+  host?: string;
   port?: number;
   dataDir?: string;
   sampleSize?: number;
@@ -25,6 +27,7 @@ export interface ConfigOverrides {
   snapshotRetain?: number;
 }
 
+const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 3000;
 const DEFAULT_DATA_DIR = './data';
 const DEFAULT_SAMPLE_SIZE = 0;
@@ -42,6 +45,11 @@ export const DEFAULT_ENRICHMENT_COOLDOWN_MS =
   DEFAULT_ENRICHMENT_COOLDOWN_SECONDS * 1000;
 export const DEFAULT_CATALOGUE_SCAN_INTERVAL_MS =
   DEFAULT_CATALOGUE_SCAN_INTERVAL_SECONDS * 1000;
+
+function parseHost(value: string | undefined): string {
+  const host = value?.trim();
+  return host ? host : DEFAULT_HOST;
+}
 
 function parsePort(value: string | undefined): number {
   if (!value) return DEFAULT_PORT;
@@ -80,12 +88,14 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 }
 
 export function loadConfig(overrides: ConfigOverrides = {}): AppConfig {
+  const host = overrides.host ?? parseHost(process.env.HOST);
   const port = overrides.port ?? parsePort(process.env.PORT);
   const dataDir = path.resolve(
     overrides.dataDir ?? process.env.DATA_DIR ?? DEFAULT_DATA_DIR,
   );
 
   return {
+    host,
     port,
     dataDir,
     dbPath: path.join(dataDir, 'catalogue.sqlite'),
