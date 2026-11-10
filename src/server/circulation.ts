@@ -27,7 +27,16 @@ export function getSampleJoinIds(db: DatabaseSync): string[] | null {
   try {
     const parsed: unknown = JSON.parse(result.value);
     if (!Array.isArray(parsed)) return null;
-    return parsed.filter((id): id is string => typeof id === 'string');
+    const hidden = new Set(
+      (
+        db
+          .prepare('SELECT join_id FROM book_records WHERE hidden = 1')
+          .all() as unknown as { join_id: string }[]
+      ).map((entry) => entry.join_id),
+    );
+    return parsed.filter(
+      (id): id is string => typeof id === 'string' && !hidden.has(id),
+    );
   } catch {
     return null;
   }

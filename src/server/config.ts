@@ -6,6 +6,7 @@ export interface AppConfig {
   dataDir: string;
   dbPath: string;
   coversDir: string;
+  sampleSize: number;
   crawlerEnabled: boolean;
   crawlerCycleDelayMs: number;
   crawlerMaxBackoffMs: number;
@@ -14,10 +15,12 @@ export interface AppConfig {
 export interface ConfigOverrides {
   port?: number;
   dataDir?: string;
+  sampleSize?: number;
 }
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_DATA_DIR = './data';
+const DEFAULT_SAMPLE_SIZE = 0;
 const DEFAULT_CYCLE_DELAY_SECONDS = 30;
 const DEFAULT_MAX_BACKOFF_SECONDS = 900;
 
@@ -32,6 +35,12 @@ function parsePort(value: string | undefined): number {
   return Number.isInteger(parsed) && parsed > 0 && parsed < 65536
     ? parsed
     : DEFAULT_PORT;
+}
+
+function parseSampleSize(value: string | undefined): number {
+  if (value === undefined || value.trim() === '') return DEFAULT_SAMPLE_SIZE;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_SAMPLE_SIZE;
 }
 
 function parseSeconds(value: string | undefined, fallback: number): number {
@@ -58,6 +67,8 @@ export function loadConfig(overrides: ConfigOverrides = {}): AppConfig {
     dataDir,
     dbPath: path.join(dataDir, 'catalogue.sqlite'),
     coversDir: path.join(dataDir, 'covers'),
+    sampleSize:
+      overrides.sampleSize ?? parseSampleSize(process.env.SAMPLE_SIZE),
     crawlerEnabled: parseBoolean(process.env.CRAWLER_ENABLED, true),
     crawlerCycleDelayMs: parseSeconds(
       process.env.CYCLE_DELAY_SECONDS,

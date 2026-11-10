@@ -17,20 +17,29 @@ npm run seed
 The seed command writes fixtures into `DATA_DIR` (default `./data`) and never
 contacts Libib.
 
-To replace the fixtures with the 50-book sample from the live catalogue:
+To replace the fixtures with records from the live catalogue:
 
 ```sh
 npm run index
 ```
 
-This reads the full Libib Catalogue index, freezes the first 50 titles from A
-onward, stores only those book records and caches their covers under
-`DATA_DIR/covers`. Running it again refreshes the sampled records without adding
-new books. To re-pick the sample (for example after the library adds titles):
+This reads the full Libib Catalogue index and stores the Crawl set, caching
+covers under `DATA_DIR/covers`. `SAMPLE_SIZE` controls the Crawl set: unset or
+`0` stores the whole visible Collection, while a positive number caps it using
+the first titles from A onward. Local development sets `SAMPLE_SIZE=50` (for
+example in a git-ignored `.env`) to work with the 50-book sample.
+
+Running `index` again refreshes the frozen Crawl set without adding records
+outside it. To re-pick the Crawl set (for example after the library adds
+titles):
 
 ```sh
 npm run resample
 ```
+
+A book record that disappears from Libib becomes Hidden: it leaves the API,
+facets, Book sweep and Enrichment pass, but its tags, subjects, enrichment and
+Match override are kept. If it reappears, it is unhidden and refreshed normally.
 
 Both commands are polite: requests are sequential, spacing defaults to one
 second and can be changed with `LIBIB_REQUEST_DELAY_MS`. They stop with a clear
@@ -117,6 +126,7 @@ Environment variables:
 | ----------------------------- | -------- | -------------------------------------------- |
 | `PORT`                        | `3000`   | API port                                     |
 | `DATA_DIR`                    | `./data` | SQLite database and cached covers directory  |
+| `SAMPLE_SIZE`                 | `0`      | Crawl-set cap; unset or `0` scans the whole visible Collection |
 | `LIBIB_REQUEST_DELAY_MS`      | `1000`   | Delay between Libib requests (index; detail refresh defaults to `2000`) |
 | `ENRICH_REQUEST_DELAY_MS`     | `1000`   | Delay between sequential enrichment requests (falls back to `LIBIB_REQUEST_DELAY_MS`) |
 | `CRAWLER_ENABLED`             | `true`   | Run the rolling crawler on server start      |
@@ -130,7 +140,7 @@ Environment variables:
 | `npm run build`     | Compile the server and build the frontend         |
 | `npm start`         | Serve the built app on `PORT`                     |
 | `npm run seed`      | Idempotently load fixtures into the database      |
-| `npm run index`     | Refresh the frozen 50-book sample from Libib      |
+| `npm run index`     | Refresh the Crawl set from Libib                  |
 | `npm run resample`  | Re-pick the sample and reconcile stored records   |
 | `npm run refresh`   | Refresh circulation and detail for sampled books  |
 | `npm run enrich`    | Enrich one book record, or all/unmatched/failed records |
