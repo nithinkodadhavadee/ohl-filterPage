@@ -1,18 +1,9 @@
-# 11: Bootstrap and snapshots
+# 11: Bootstrap and snapshots (superseded)
 
-**What to build:** A fresh install becomes usable in roughly eighteen minutes, with books filling in progressively, and the scraped data can be recovered without going back to Libib. A one-time bootstrap reads the index and then each book's detail at a deliberate pace, resuming if interrupted; the database is snapshotted automatically, and the Librarian can restore or export a snapshot.
+**What to build:** Superseded by Pass 3. Its scope is now split across the tickets named below.
 
-**Blocked by:** 03
+**Blocked by:** —
 
-**Status:** needs-info
+**Status:** superseded by 20, 21, 22, 23
 
-**Note:** Deferred past v1. At 50 books the bootstrap is simply the first crawler pass. Snapshots need a conversation before implementation.
-
-**Needs conversation:** snapshot trigger points, retention, restore and export, and whether they are worth the ceremony at this scale.
-
-- [ ] A one-time bootstrap reads the index and then one detail request per book record at roughly two seconds, writing records as they arrive.
-- [ ] An interrupted bootstrap resumes from its persisted cursor rather than starting over.
-- [ ] A consistent database snapshot is written after bootstrap and after each completed Crawl cycle, retaining a configurable number of recent snapshots (default seven).
-- [ ] A restore command replaces the live database from a snapshot and refuses to run while the crawler is active.
-- [ ] An export command writes a snapshot to an arbitrary destination, and snapshots preserve enrichments and Match overrides.
-- [ ] Cached covers are excluded from snapshots and re-fetched when absent.
+**Note:** First run and startup catch-up are ticket 21; the Scheduled catalogue scan is ticket 22; the new snapshot policy is ticket 23; the configurable Crawl set and Hidden books are ticket 20. The original two-second bootstrap and per-cycle snapshot design was replaced by ADR-0007 and ADR-0010.

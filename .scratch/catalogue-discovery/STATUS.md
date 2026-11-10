@@ -1,6 +1,6 @@
 # Catalogue Discovery — Status
 
-Branches (local; no remote, no PR): `feat/catalogue-discovery-v1`, then `feat/catalogue-discovery-pass2`.
+Branches (local; no remote, no PR): `feat/catalogue-discovery-v1`, then `feat/catalogue-discovery-pass2`. Pass 3 is planned, not yet implemented.
 
 ## v1 prototype — implemented and verified
 
@@ -30,8 +30,18 @@ Verification: `typecheck`, `build`, 148 tests green; live run with 50 book recor
 
 Verification: `typecheck`, `build`, 173 tests green; live API check of `?solo=`, `enrichmentSource` and the tri-state unmatched filter.
 
-## Remaining
+## Pass 3 — decided, awaiting review (not implemented)
 
-- [ ] 11 Bootstrap and snapshots — `needs-info` (deferred; snapshots and the hourly index poll need discussion)
+- [ ] 20 Configurable Crawl set and Hidden books — `ready-for-agent` (no blockers)
+- [ ] 21 Startup catch-up and First run — `ready-for-agent` (blocked by 20)
+- [ ] 22 Daily Scheduled catalogue scan — `ready-for-agent` (blocked by 21)
+- [ ] 23 Snapshots, Restore and Export — `ready-for-agent` (blocked by 20)
+- [ ] 24 Infinite scroll — `ready-for-agent` (no blockers)
+- [ ] 25 Containerisation and deployment — `ready-for-agent` (blocked by 21, 22, 23, 24)
+- [ ] 26 Canonical CLI and operations documentation — `ready-for-agent` (blocked by 21, 22, 23)
 
-Tickets 12–19 are done; the spec's Post-v1 Backlog stays as the record of what pass 2 built.
+Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots). ADR-0005 and ADR-0006 are superseded.
+
+## Superseded
+
+- [ ] 11 Bootstrap and snapshots — superseded by 20, 21, 22, 23

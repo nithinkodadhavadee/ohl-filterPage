@@ -22,6 +22,10 @@ _Avoid_: Library, shelf, category
 One entry in the Libib catalogue. A book record may stand for several physical copies.
 _Avoid_: Item, title, listing, entry
 
+**Hidden book**:
+A book record no longer present in Libib, kept in the database but excluded from the Crawl set, the API and the page. It becomes visible again if it reappears.
+_Avoid_: Deleted book, removed book
+
 **Copy**:
 A single physical volume of a book record. Only counts are known, never individual copies.
 _Avoid_: Unit, instance
@@ -88,9 +92,39 @@ _Avoid_: Inventory
 The last time the library's own figures for a book record — holds, copies, availability — were read. Refreshing is per book record, not per site.
 _Avoid_: Synced, updated
 
-**Crawl cycle**:
-One full pass over every book record in the catalogue.
-_Avoid_: Sync, run
+**Sweep cycle**:
+One full pass of the Book sweep over the Crawl set.
+_Avoid_: Crawl cycle, sync, run
+
+## Operations
+
+**Catalogue scan**:
+Reading Libib's catalogue index to establish which book records exist — titles, authors and covers — adding new records and removing records that have vanished.
+_Avoid_: Index, poll, sync
+
+**Book sweep**:
+The rolling refresh of one book record's circulation and library metadata at a steady pace, cycling through the Crawl set.
+_Avoid_: Refresh, crawl, index
+
+**Enrichment pass**:
+Fetching Ratings, Subjects and page count from an enrichment source for book records that need them.
+_Avoid_: Enrichment crawl, metadata sync
+
+**First run**:
+The initial sequence on an empty database: a Catalogue scan, then the Book sweep and Enrichment pass in parallel.
+_Avoid_: Bootstrap
+
+**Scheduled catalogue scan**:
+A Catalogue scan triggered on a timer to detect added and removed book records.
+_Avoid_: Poll, poller, index poll
+
+**Crawl set**:
+The set of book records the Book sweep covers. In production it is the whole Collection; locally it may be a capped sample.
+_Avoid_: Sample, inventory
+
+**Snapshot**:
+A consistent copy of the catalogue database, taken so data can be restored without re-scanning or re-enriching.
+_Avoid_: Backup, dump
 
 ## Presentation
 

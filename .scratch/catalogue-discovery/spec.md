@@ -47,17 +47,11 @@ v1 is a **local-only prototype**, run on the Librarian's machine to validate the
 
 ### Out of v1, or delayed
 
-- **Ticket 11, bootstrap and snapshots** — deferred. At 50 books the bootstrap is simply the first crawler pass. Snapshots need a conversation first.
-- **Docker, Compose, named volume and deployment** — deferred until the prototype is validated. Deployment currently has no ticket; create one when deployment is scheduled.
-- **Hourly index poll** — needs a conversation before implementation. v1 keeps the sample frozen.
-- **Infinite scroll** — 50 book records load at once.
-- **Browser tests and accessibility audit** — deferred.
-- Everything already listed under Out of Scope stays out.
+These were deferred past v1 and are now decided in Pass 3 at the end of this document: bootstrap and snapshots, Docker/Compose/deployment, the Scheduled catalogue scan, and infinite scroll. Browser tests and accessibility audits remain deferred. Everything under Out of Scope stays out.
 
 ### Needs discussion before implementation
 
-- Database snapshots, restore and off-volume export: trigger points, retention, and whether they are worth it at this scale.
-- The hourly index poll: how it interacts with a frozen sample, and whether added or removed book records should ever reshape the sample automatically.
+Resolved in Pass 3 at the end of this document.
 
 ## User Stories
 
@@ -328,3 +322,38 @@ Recorded after the v1 prototype and resolved in a grilling round. Tickets 12–1
    No "i" in the grid or table; badges use their own hover/tap explanation instead. Ticket 19.
 
 The original list ended at item 9 with no content; nothing was recorded for it.
+
+## Pass 3 — Production Shape (decided)
+
+Pass 3 turns the pass-2 prototype into the deployable service and supersedes the deferred items above. Tickets 20–26. Nothing here is implemented yet.
+
+### Lifecycle
+
+- **First run** on an empty database: a Catalogue scan, then the Book sweep and a full Enrichment pass in parallel at the normal 30-second pacing. No faster bootstrap.
+- **Every startup, populated database:** a Catalogue scan, then a full Enrichment pass and the normal Book sweep in parallel. Stored data is served throughout with its refreshed timestamps.
+- **Startup cooldown:** a full Enrichment pass is skipped if one completed within the last hour; the timestamp is persisted so restart loops cannot repeat it.
+- **Scheduled catalogue scan:** every 24 hours by default, measured from start and configurable (0 disables). It triggers a full Enrichment pass. On failure it retries with backoff, then waits for the next run.
+- Enrichment passes cover every visible book, including already-enriched ones; Match overrides always win.
+
+### Data
+
+- `SAMPLE_SIZE`: 0 or unset means the whole Collection; local development sets 50 in a git-ignored `.env`. The Crawl set is the visible book records.
+- A book record missing from a Catalogue scan becomes **Hidden**: excluded from the Crawl set, Enrichment, API and page, with its rows and Match override kept. A returning record is unhidden and refreshed normally.
+- **Snapshots** are consistent copies of the SQLite database. They are taken after a Catalogue scan, after a full Enrichment pass, after a Match override import, and on demand; the last 10 are kept. Restore requires the app to be stopped; Export copies a snapshot off-host. Cached covers are excluded.
+
+### Scale and UI
+
+- Infinite scroll in batches of 24, fixed; covers lazy-loaded.
+
+### Deployment
+
+- One container, no catalogue data in the image. `DATA_DIR` (default `./data`) is bind-mounted at `/data` and holds the database, covers and snapshots.
+- The container serves plain HTTP on a loopback port with a healthcheck. A single host-run `cloudflared` instance, shared across projects, routes the site's hostname to that port; Cloudflare provides TLS.
+
+### Commands
+
+Canonical CLI: `catalogue:scan`, `catalogue:resample`, `sweep` (`--book`, `--delay`), `enrich` (`--all`, `--unmatched`, `--failed`, `--id`), `snapshot`, `restore`, `export`, `overrides:import`, `export:unmatched`, `seed`, plus `dev`, `build`, `start`, `test`, `typecheck`. All are documented in the operations documentation.
+
+### Decisions recorded
+
+ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots). ADR-0005 and ADR-0006 are superseded.
