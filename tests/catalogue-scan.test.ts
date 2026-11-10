@@ -4,10 +4,10 @@ import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  refreshCatalogueIndex,
-  resampleCatalogueIndex,
-  type CatalogueIndexDeps,
-} from '../src/server/catalogue-index.js';
+  scanCatalogue,
+  resampleCatalogue,
+  type CatalogueScanDeps,
+} from '../src/server/catalogue-scan.js';
 import { loadConfig } from '../src/server/config.js';
 import { openDatabase } from '../src/server/db.js';
 import type { LibibIndexItem } from '../src/server/libib-index.js';
@@ -38,7 +38,7 @@ function deps(
   index: LibibIndexItem[],
   now: Date,
   sampleSize = 50,
-): CatalogueIndexDeps {
+): CatalogueScanDeps {
   return {
     fetchIndex: async () => index,
     sampleSize,
@@ -84,7 +84,7 @@ function ftsCount(): number {
   ).count;
 }
 
-describe('refreshCatalogueIndex', () => {
+describe('scanCatalogue', () => {
   it('persists only sampled records and records the sample state', async () => {
     const now = new Date('2026-11-10T10:00:00.000Z');
     const index = [
@@ -93,10 +93,10 @@ describe('refreshCatalogueIndex', () => {
       item('102', 'Abundance', 'Peter H. Diamandis'),
     ];
 
-    const result = await refreshCatalogueIndex(db, deps(index, now));
+    const result = await scanCatalogue(db, deps(index, now));
 
     expect(result).toEqual({
-      mode: 'index',
+      mode: 'scan',
       sampleSize: 2,
       added: 2,
       updated: 0,
@@ -129,13 +129,13 @@ describe('refreshCatalogueIndex', () => {
     ).run('900', 'Seed Fixture', '', '');
 
     const now = new Date('2026-11-10T10:00:00.000Z');
-    const result = await refreshCatalogueIndex(
+    const result = await scanCatalogue(
       db,
       deps([item('101', 'Abundance')], now),
     );
 
     expect(result).toEqual({
-      mode: 'index',
+      mode: 'scan',
       sampleSize: 1,
       added: 1,
       updated: 0,
@@ -148,7 +148,7 @@ describe('refreshCatalogueIndex', () => {
 
   it('refreshes sampled records, hides disappearances and adds nothing new', async () => {
     const firstNow = new Date('2026-11-10T10:00:00.000Z');
-    await refreshCatalogueIndex(
+    await scanCatalogue(
       db,
       deps(
         [
@@ -162,7 +162,7 @@ describe('refreshCatalogueIndex', () => {
       ?.first_seen_at;
 
     const secondNow = new Date('2026-11-10T11:00:00.000Z');
-    const result = await refreshCatalogueIndex(
+    const result = await scanCatalogue(
       db,
       deps(
         [
@@ -174,7 +174,7 @@ describe('refreshCatalogueIndex', () => {
     );
 
     expect(result).toEqual({
-      mode: 'index',
+      mode: 'scan',
       sampleSize: 1,
       added: 0,
       updated: 1,
@@ -197,10 +197,10 @@ describe('refreshCatalogueIndex', () => {
   });
 });
 
-describe('resampleCatalogueIndex', () => {
+describe('resampleCatalogue', () => {
   it('re-picks the sample from the fresh index and reconciles stored records', async () => {
     const firstNow = new Date('2026-11-10T10:00:00.000Z');
-    await refreshCatalogueIndex(
+    await scanCatalogue(
       db,
       deps([item('201', 'Aardvark'), item('202', 'Beloved')], firstNow),
     );
@@ -208,7 +208,7 @@ describe('resampleCatalogueIndex', () => {
       ?.first_seen_at;
 
     const secondNow = new Date('2026-11-10T11:00:00.000Z');
-    const result = await resampleCatalogueIndex(
+    const result = await resampleCatalogue(
       db,
       deps(
         [
@@ -254,5 +254,45 @@ describe('resampleCatalogueIndex', () => {
     );
     expect(state('last_index_refreshed_at')).toBe(secondNow.toISOString());
     expect(ftsCount()).toBe(4);
+  });
+
+  it('keeps still-present records that a smaller Sample excludes', async () => {
+    const firstNow = new Date('2026-11-10T10:00:00.000Z');
+    await scanCatalogue(
+      db,
+      deps(
+        [item('301', 'Abundance'), item('302', 'Beloved')],
+        firstNow,
+        0,
+      ),
+    );
+
+    const secondNow = new Date('2026-11-10T11:00:00.000Z');
+    const result = await resampleCatalogue(
+      db,
+      deps(
+        [item('301', 'Abundance'), item('302', 'Beloved')],
+        secondNow,
+        1,
+      ),
+    );
+
+    expect(result).toEqual({
+      mode: 'resample',
+      sampleSize: 1,
+      added: 0,
+      updated: 1,
+      removed: 0,
+    });
+
+    const stored = books();
+    expect(stored.map((book) => book.join_id).sort()).toEqual([
+      '301',
+      '302',
+    ]);
+    expect(stored.find((book) => book.join_id === '302')).toMatchObject({
+      hidden: 0,
+    });
+    expect(state('sample_join_ids')).toBe(JSON.stringify(['301']));
   });
 });

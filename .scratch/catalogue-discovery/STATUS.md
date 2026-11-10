@@ -44,7 +44,7 @@ Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-
 
 ## Superseded
 
-- [ ] 11 Bootstrap and snapshots — superseded by 20, 21, 22, 23
+- [ ] 11 First run and snapshots — superseded by 20, 21, 22, 23
 
 ## Later (needs-triage)
 

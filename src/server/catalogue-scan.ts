@@ -5,8 +5,9 @@ import {
 } from './enrichment.js';
 import type { LibibIndexItem } from './libib-index.js';
 import { selectSample } from './sample.js';
+import { errorMessage, sleep as defaultSleep } from './util.js';
 
-export interface CatalogueIndexDeps {
+export interface CatalogueScanDeps {
   fetchIndex: () => Promise<LibibIndexItem[]>;
   sampleSize?: number;
   cacheCover?: (item: LibibIndexItem) => Promise<string | null>;
@@ -15,14 +16,11 @@ export interface CatalogueIndexDeps {
   sleep?: (milliseconds: number) => Promise<void>;
   logger?: (message: string) => void;
   now?: () => Date;
-  onComplete?: (result: CatalogueIndexResult) => void | Promise<void>;
+  onComplete?: (result: CatalogueScanResult) => void | Promise<void>;
 }
 
-const defaultSleep = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-export interface CatalogueIndexResult {
-  mode: 'index' | 'resample';
+export interface CatalogueScanResult {
+  mode: 'scan' | 'resample';
   sampleSize: number;
   added: number;
   updated: number;
@@ -75,15 +73,17 @@ function dedupeById(items: readonly LibibIndexItem[]): LibibIndexItem[] {
   });
 }
 
-async function persistSample(
+async function persistCatalogueScan(
   db: DatabaseSync,
+  fullIndex: readonly LibibIndexItem[],
   target: readonly LibibIndexItem[],
-  deps: CatalogueIndexDeps,
-  mode: CatalogueIndexResult['mode'],
+  deps: CatalogueScanDeps,
+  mode: CatalogueScanResult['mode'],
   sampleIds: readonly string[],
-): Promise<CatalogueIndexResult> {
+): Promise<CatalogueScanResult> {
   const now = (deps.now?.() ?? new Date()).toISOString();
   const uniqueTarget = dedupeById(target);
+  const indexIds = new Set(fullIndex.map((item) => item.joinId));
 
   const existing = new Map<string, ExistingRecord>();
   const existingRows = db
@@ -104,10 +104,16 @@ async function persistSample(
 
   const targetIds = new Set(uniqueTarget.map((item) => item.joinId));
   const vanishedIds = [...existing.keys()].filter(
-    (joinId) => !targetIds.has(joinId),
+    (joinId) => !indexIds.has(joinId),
   );
   const removedIds = vanishedIds.filter(
     (joinId) => existing.get(joinId)?.hidden === 0,
+  );
+  const returningIds = [...existing.keys()].filter(
+    (joinId) =>
+      indexIds.has(joinId) &&
+      !targetIds.has(joinId) &&
+      existing.get(joinId)?.hidden === 1,
   );
 
   const upsertBook = db.prepare(`
@@ -128,6 +134,9 @@ async function persistSample(
   `);
   const hideBook = db.prepare(
     'UPDATE book_records SET hidden = 1 WHERE join_id = ?',
+  );
+  const unhideBook = db.prepare(
+    'UPDATE book_records SET hidden = 0 WHERE join_id = ?',
   );
 
   let added = 0;
@@ -160,6 +169,10 @@ async function persistSample(
         item.author ?? '',
         previous?.description ?? '',
       );
+    }
+
+    for (const joinId of returningIds) {
+      unhideBook.run(joinId);
     }
 
     for (const joinId of vanishedIds) {
@@ -197,15 +210,13 @@ async function persistSample(
         }
       } catch (error) {
         deps.logger?.(
-          `Could not enrich new book record ${joinId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `Could not enrich new book record ${joinId}: ${errorMessage(error)}`,
         );
       }
     }
   }
 
-  const result: CatalogueIndexResult = {
+  const result: CatalogueScanResult = {
     mode,
     sampleSize: prepared.length,
     added,
@@ -216,10 +227,10 @@ async function persistSample(
   return result;
 }
 
-export async function refreshCatalogueIndex(
+export async function scanCatalogue(
   db: DatabaseSync,
-  deps: CatalogueIndexDeps,
-): Promise<CatalogueIndexResult> {
+  deps: CatalogueScanDeps,
+): Promise<CatalogueScanResult> {
   const index = dedupeById(await deps.fetchIndex());
   const sampledIds = readSampleIds(db);
   const sampleSize = deps.sampleSize ?? 0;
@@ -241,17 +252,18 @@ export async function refreshCatalogueIndex(
     nextSampleIds = target.map((item) => item.joinId);
   }
 
-  return persistSample(db, target, deps, 'index', nextSampleIds);
+  return persistCatalogueScan(db, index, target, deps, 'scan', nextSampleIds);
 }
 
-export async function resampleCatalogueIndex(
+export async function resampleCatalogue(
   db: DatabaseSync,
-  deps: CatalogueIndexDeps,
-): Promise<CatalogueIndexResult> {
+  deps: CatalogueScanDeps,
+): Promise<CatalogueScanResult> {
   const index = dedupeById(await deps.fetchIndex());
   const target = selectSample(index, deps.sampleSize ?? 0);
-  return persistSample(
+  return persistCatalogueScan(
     db,
+    index,
     target,
     deps,
     'resample',

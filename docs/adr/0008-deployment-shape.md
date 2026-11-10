@@ -4,7 +4,7 @@ The app ships as a single container with no catalogue data in the image; the SQL
 
 ## Consequences
 
-- Backups are ordinary file copies on the host.
+- Snapshots are ordinary file copies on the host.
 - No per-project tunnel container and no certificates inside the image.
 - Restoring means stopping the container, replacing the database, and starting again.
 - Binding the published port to loopback keeps the origin unreachable except through the tunnel.

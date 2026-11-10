@@ -8,15 +8,18 @@ import {
   takeSnapshot,
   type TakeSnapshotOptions,
 } from './snapshot.js';
+import { errorMessage } from './util.js';
 
-const USAGE = 'Usage: snapshot-cli <snapshot|restore|export> [--] <path>';
+const USAGE = [
+  'Usage:',
+  '  npm run snapshot',
+  '  npm run restore -- <snapshot>',
+  '  npm run export -- <destination>',
+  '  npm run export -- <snapshot> <destination>',
+].join('\n');
 
 function positional(args: readonly string[]): string[] {
   return args.filter((argument) => argument !== '--');
-}
-
-function detail(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export interface SnapshotCommandDeps {
@@ -38,7 +41,7 @@ export function runSnapshotCommand(
     log(`Snapshot written to ${snapshot}.`);
     return 0;
   } catch (caught) {
-    error(`Could not take snapshot: ${detail(caught)}`);
+    error(`Could not take snapshot: ${errorMessage(caught)}`);
     return 1;
   }
 }
@@ -67,35 +70,36 @@ export function runRestoreCommand(
     log(`Restored database from ${paths[0]}.`);
     return 0;
   } catch (caught) {
-    error(detail(caught));
+    error(errorMessage(caught));
     return 1;
   }
 }
 
-export interface ExportCommandDeps extends SnapshotCommandDeps {}
-
 export function runExportCommand(
   args: readonly string[],
   config: AppConfig,
-  deps: ExportCommandDeps,
+  deps: SnapshotCommandDeps,
 ): number {
   const log = deps.log ?? ((line: string) => console.log(line));
   const error = deps.error ?? ((line: string) => console.error(line));
   const paths = positional(args);
 
-  if (paths.length !== 1) {
+  if (paths.length < 1 || paths.length > 2) {
     error(USAGE);
     return 1;
   }
 
   try {
-    const snapshot = takeSnapshot(deps.db, config, { now: deps.now });
-    const destination = paths[0];
-    exportSnapshot(snapshot, destination);
+    const source =
+      paths.length === 2
+        ? paths[0]
+        : takeSnapshot(deps.db, config, { now: deps.now });
+    const destination = paths.length === 2 ? paths[1] : paths[0];
+    exportSnapshot(source, destination);
     log(`Exported snapshot to ${destination}.`);
     return 0;
   } catch (caught) {
-    error(`Could not export snapshot: ${detail(caught)}`);
+    error(`Could not export snapshot: ${errorMessage(caught)}`);
     return 1;
   }
 }

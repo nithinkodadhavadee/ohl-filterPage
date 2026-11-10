@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSweepArgs } from '../src/server/refresh-cli.js';
+import { parseSweepArgs } from '../src/server/sweep-cli.js';
 
 describe('parseSweepArgs', () => {
   it('sweeps the whole Crawl set with no arguments', () => {

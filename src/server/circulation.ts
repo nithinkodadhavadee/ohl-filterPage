@@ -1,7 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_DETAIL_DELAY_MS, type LibibDetail } from './libib-detail.js';
+import { sleep as defaultSleep } from './util.js';
+import { HIDDEN_BOOK_SQL } from './visibility.js';
 
-export interface BookRefreshDeps {
+export interface BookSweepDeps {
   fetchDetail: (joinId: string) => Promise<LibibDetail | null>;
   now?: () => Date;
   delayMs?: number;
@@ -9,16 +11,13 @@ export interface BookRefreshDeps {
   joinIds?: readonly string[];
 }
 
-export interface BookRefreshResult {
+export interface BookSweepResult {
   sampleSize: number;
   refreshed: number;
   skipped: number;
 }
 
 const SAMPLE_KEY = 'sample_join_ids';
-
-const defaultSleep = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export function getSampleJoinIds(db: DatabaseSync): string[] | null {
   const statement = db.prepare('SELECT value FROM crawl_state WHERE key = ?');
@@ -31,7 +30,9 @@ export function getSampleJoinIds(db: DatabaseSync): string[] | null {
     const hidden = new Set(
       (
         db
-          .prepare('SELECT join_id FROM book_records WHERE hidden = 1')
+          .prepare(
+            `SELECT join_id FROM book_records WHERE ${HIDDEN_BOOK_SQL}`,
+          )
           .all() as unknown as { join_id: string }[]
       ).map((entry) => entry.join_id),
     );
@@ -118,10 +119,10 @@ export function persistBookDetail(
   }
 }
 
-export async function refreshBookDetails(
+export async function sweepBookDetails(
   db: DatabaseSync,
-  deps: BookRefreshDeps,
-): Promise<BookRefreshResult> {
+  deps: BookSweepDeps,
+): Promise<BookSweepResult> {
   const sampleIds = deps.joinIds ?? getSampleJoinIds(db);
   if (sampleIds === null || sampleIds.length === 0) {
     return { sampleSize: 0, refreshed: 0, skipped: 0 };

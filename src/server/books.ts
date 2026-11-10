@@ -15,6 +15,7 @@ import {
   type SortField,
 } from '../shared/contract.js';
 import { enrichmentSourceLabel } from '../shared/enrichment.js';
+import { VISIBLE_BOOK_SQL } from './visibility.js';
 
 export type {
   Book,
@@ -535,7 +536,7 @@ export function getBooks(
       : null;
 
   const allRecords = rows<BookRow>(
-    db.prepare('SELECT * FROM book_records WHERE hidden = 0'),
+    db.prepare(`SELECT * FROM book_records WHERE ${VISIBLE_BOOK_SQL}`),
   ).filter(
     (record) => {
       if (
@@ -631,7 +632,7 @@ export function getBooks(
 
 export function getBook(db: DatabaseSync, joinId: string): Book | null {
   const statement = db.prepare(
-    'SELECT * FROM book_records WHERE join_id = ? AND hidden = 0',
+    `SELECT * FROM book_records WHERE join_id = ? AND ${VISIBLE_BOOK_SQL}`,
   );
   const record = row<BookRow>(statement, joinId);
   return record ? toBook(db, record) : null;
@@ -643,7 +644,7 @@ export function getFacets(db: DatabaseSync): FacetsResponse {
       SELECT t.tag AS value, COUNT(DISTINCT t.join_id) AS count
       FROM book_tags t
       JOIN book_records b ON b.join_id = t.join_id
-      WHERE b.hidden = 0
+      WHERE b.${VISIBLE_BOOK_SQL}
       GROUP BY t.tag
       ORDER BY t.tag COLLATE NOCASE
     `),
@@ -652,7 +653,7 @@ export function getFacets(db: DatabaseSync): FacetsResponse {
     db.prepare(`
       SELECT author AS value, COUNT(*) AS count
       FROM book_records
-      WHERE hidden = 0 AND author IS NOT NULL AND TRIM(author) <> ''
+      WHERE ${VISIBLE_BOOK_SQL} AND author IS NOT NULL AND TRIM(author) <> ''
       GROUP BY author
       ORDER BY author COLLATE NOCASE
     `),
@@ -662,7 +663,7 @@ export function getFacets(db: DatabaseSync): FacetsResponse {
       SELECT s.subject AS value, COUNT(DISTINCT s.join_id) AS count
       FROM book_subjects s
       JOIN book_records b ON b.join_id = s.join_id
-      WHERE b.hidden = 0
+      WHERE b.${VISIBLE_BOOK_SQL}
       GROUP BY s.subject
       ORDER BY s.subject COLLATE NOCASE
     `),

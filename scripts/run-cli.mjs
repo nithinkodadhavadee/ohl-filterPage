@@ -16,7 +16,12 @@ const target = useBuilt ? built : source;
 
 const result = spawnSync(
   command,
-  ['--env-file-if-exists=.env', target, ...args],
+  [
+    '--env-file-if-exists=.env',
+    '--env-file-if-exists=.env.local',
+    target,
+    ...args,
+  ],
   { stdio: 'inherit' },
 );
 

@@ -9,9 +9,9 @@ import {
   getFacets,
 } from './books.js';
 import {
-  refreshCatalogueIndex,
-  type CatalogueIndexDeps,
-} from './catalogue-index.js';
+  scanCatalogue,
+  type CatalogueScanDeps,
+} from './catalogue-scan.js';
 import { loadConfig } from './config.js';
 import { cacheCover } from './covers.js';
 import {
@@ -29,7 +29,7 @@ import {
   type ScheduledScanHandle,
   type ScheduledSleep,
 } from './scheduled-scan.js';
-import { takeSnapshotSafely } from './snapshot.js';
+import { snapshotOnSuccess } from './snapshot.js';
 import {
   recordFullEnrichment,
   startStartup,
@@ -59,7 +59,6 @@ export interface ScheduledScanOverrides {
   retryBaseMs?: number;
   retryMaxMs?: number;
   jitterRatio?: number;
-  random?: () => number;
 }
 
 export interface BuildAppOptions {
@@ -135,6 +134,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   let startup: StartupHandle | null = null;
   let scheduled: ScheduledScanHandle | null = null;
 
+  const currentStatus = () =>
+    getCrawlerStatus(db, {
+      enabled: crawlerEnabled,
+      startup: startup?.status(),
+      scheduled: scheduled?.status(),
+    });
+
   const clientDir = path.resolve(process.cwd(), 'dist/client');
   if (options.serveStatic && existsSync(clientDir)) {
     await app.register(fastifyStatic, { root: clientDir, prefix: '/' });
@@ -152,15 +158,34 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     db.close();
   });
 
-  app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/health', async (_request, reply) => {
+    const status = currentStatus();
+    let databaseOk = true;
+    try {
+      db.prepare('SELECT 1').get();
+    } catch {
+      databaseOk = false;
+    }
 
-  app.get('/api/status', async () =>
-    getCrawlerStatus(db, {
-      enabled: crawlerEnabled,
-      startup: startup?.status(),
-      scheduled: scheduled?.status(),
-    }),
-  );
+    const crawlerHealthy = !status.enabled || status.lastOutcome !== 'error';
+    const healthy = databaseOk && crawlerHealthy;
+
+    return reply.code(healthy ? 200 : 503).send({
+      status: healthy ? 'ok' : 'degraded',
+      database: databaseOk ? 'ok' : 'error',
+      crawler: {
+        enabled: status.enabled,
+        healthy: crawlerHealthy,
+        backoff: status.backoff.active,
+        lastOutcome: status.lastOutcome,
+        lastError: status.lastError,
+      },
+      startup: status.startup ?? null,
+      scheduled: status.scheduled ?? null,
+    });
+  });
+
+  app.get('/api/status', async () => currentStatus());
 
   app.get<{
     Querystring: {
@@ -251,13 +276,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     const runScan =
       options.startupDeps?.scan ??
       (() =>
-        refreshCatalogueIndex(db, {
+        scanCatalogue(db, {
           fetchIndex: () => libib.fetchIndex(),
           sampleSize: config.sampleSize,
           cacheCover: (item) =>
             cacheCover(item, { coversDir: config.coversDir }),
           logger,
-        } satisfies CatalogueIndexDeps));
+        } satisfies CatalogueScanDeps));
 
     const runEnrich =
       options.startupDeps?.enrich ??
@@ -270,9 +295,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           error: logger ?? ((line: string) => console.error(line)),
         }));
 
-    const snapshot = (): void => {
-      takeSnapshotSafely(db, config, { log: logger });
-    };
+    const snapshot = snapshotOnSuccess(db, config, logger);
 
     const scan = async (): Promise<unknown> => {
       const result = await runScan();
@@ -319,7 +342,6 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       retryBaseMs: options.scheduledDeps?.retryBaseMs,
       retryMaxMs: options.scheduledDeps?.retryMaxMs,
       jitterRatio: options.scheduledDeps?.jitterRatio,
-      random: options.scheduledDeps?.random,
       logger,
       onEnrichmentComplete: (at) => recordFullEnrichment(db, at),
     });

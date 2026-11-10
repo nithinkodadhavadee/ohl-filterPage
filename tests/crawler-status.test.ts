@@ -62,4 +62,51 @@ describe('GET /api/status', () => {
       lastError: 'Libib refused rate',
     });
   });
+
+  it('treats throttling backoff as healthy but a hard crawler error as degraded', async () => {
+    const healthy = await app.inject({ method: 'GET', url: '/health' });
+    expect(healthy.statusCode).toBe(200);
+    expect(healthy.json()).toMatchObject({
+      status: 'ok',
+      database: 'ok',
+      crawler: {
+        healthy: true,
+        backoff: true,
+        lastOutcome: 'throttled',
+      },
+    });
+
+    const config = loadConfig({ dataDir });
+    const writer = openDatabase(config);
+    writer
+      .prepare(
+        "UPDATE crawl_state SET value = 'error' WHERE key = 'crawl_last_outcome'",
+      )
+      .run();
+    writer.close();
+
+    const enabledApp = await buildApp({
+      dataDir,
+      serveStatic: false,
+      crawler: true,
+      startup: false,
+    });
+    try {
+      const degraded = await enabledApp.inject({
+        method: 'GET',
+        url: '/health',
+      });
+      expect(degraded.statusCode).toBe(503);
+      expect(degraded.json()).toMatchObject({
+        status: 'degraded',
+        database: 'ok',
+        crawler: {
+          healthy: false,
+          lastOutcome: 'error',
+        },
+      });
+    } finally {
+      await enabledApp.close();
+    }
+  });
 });

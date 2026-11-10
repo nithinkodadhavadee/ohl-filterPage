@@ -7,7 +7,7 @@ import { loadConfig, DEFAULT_CATALOGUE_SCAN_INTERVAL_MS } from '../src/server/co
 import type { CrawlerHandle } from '../src/server/crawler.js';
 import { openDatabase } from '../src/server/db.js';
 import {
-  runScheduledScanOnce,
+  runScheduledScanAndEnrich,
   startScheduledScan,
   type ScheduledSleep,
 } from '../src/server/scheduled-scan.js';
@@ -97,12 +97,12 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
   throw new Error('Timed out waiting for condition');
 }
 
-describe('runScheduledScanOnce', () => {
+describe('runScheduledScanAndEnrich', () => {
   it('runs the Catalogue scan then a full Enrichment pass', async () => {
     const events: string[] = [];
     const now = new Date('2026-11-10T10:00:00.000Z');
 
-    const result = await runScheduledScanOnce({
+    const result = await runScheduledScanAndEnrich({
       scan: async () => {
         events.push('scan');
       },
@@ -127,7 +127,7 @@ describe('runScheduledScanOnce', () => {
     const now = new Date('2026-11-10T10:00:00.000Z');
     let attempts = 0;
 
-    const result = await runScheduledScanOnce({
+    const result = await runScheduledScanAndEnrich({
       scan: async () => {
         attempts += 1;
         if (attempts < 3) throw new Error('Libib unavailable');
@@ -153,7 +153,7 @@ describe('runScheduledScanOnce', () => {
     const sleeps: number[] = [];
     let attempts = 0;
 
-    const result = await runScheduledScanOnce({
+    const result = await runScheduledScanAndEnrich({
       scan: async () => {
         attempts += 1;
         throw new Error('Libib unavailable');

@@ -1,5 +1,6 @@
 import { backoffDelayForAttempt } from './crawler-schedule.js';
 import type { StartupTaskContext } from './startup.js';
+import { errorMessage, sleep as defaultSleep } from './util.js';
 
 export const DEFAULT_SCHEDULED_SCAN_MAX_ATTEMPTS = 3;
 export const DEFAULT_SCHEDULED_SCAN_RETRY_BASE_MS = 60_000;
@@ -36,7 +37,6 @@ export interface ScheduledScanDeps {
   retryBaseMs?: number;
   retryMaxMs?: number;
   jitterRatio?: number;
-  random?: () => number;
   logger?: (message: string) => void;
   onEnrichmentComplete?: (at: Date) => void;
 }
@@ -47,34 +47,6 @@ export interface ScheduledScanHandle {
   stop: () => Promise<void>;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function defaultSleep(
-  milliseconds: number,
-  signal?: AbortSignal,
-): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) {
-      resolve();
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, milliseconds);
-
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
 function normalizeAttempts(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) {
     return DEFAULT_SCHEDULED_SCAN_MAX_ATTEMPTS;
@@ -82,7 +54,7 @@ function normalizeAttempts(value: number | undefined): number {
   return Math.max(1, Math.floor(value));
 }
 
-export async function runScheduledScanOnce(
+export async function runScheduledScanAndEnrich(
   deps: ScheduledScanDeps,
   signal?: AbortSignal,
 ): Promise<ScheduledScanRunResult> {
@@ -124,7 +96,6 @@ export async function runScheduledScanOnce(
           deps.retryBaseMs ?? DEFAULT_SCHEDULED_SCAN_RETRY_BASE_MS,
         maxDelayMs: deps.retryMaxMs ?? DEFAULT_SCHEDULED_SCAN_RETRY_MAX_MS,
         jitterRatio: deps.jitterRatio,
-        random: deps.random,
       });
       await sleep(delayMs, runSignal);
     }
@@ -181,7 +152,7 @@ export function startScheduledScan(
       status.lastRunAt = now().toISOString();
 
       try {
-        const result = await runScheduledScanOnce(deps, controller.signal);
+        const result = await runScheduledScanAndEnrich(deps, controller.signal);
         status.lastError = result.error;
         if (!result.ok) {
           logger(

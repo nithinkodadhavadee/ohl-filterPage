@@ -6,9 +6,9 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/server/app.js';
 import {
-  refreshCatalogueIndex,
-  type CatalogueIndexDeps,
-} from '../src/server/catalogue-index.js';
+  scanCatalogue,
+  type CatalogueScanDeps,
+} from '../src/server/catalogue-scan.js';
 import { loadConfig } from '../src/server/config.js';
 import type { CrawlerHandle } from '../src/server/crawler.js';
 import { openDatabase } from '../src/server/db.js';
@@ -51,7 +51,7 @@ function indexDeps(
   index: LibibIndexItem[],
   sampleSize = 0,
   now = new Date('2026-11-10T10:00:00.000Z'),
-): CatalogueIndexDeps {
+): CatalogueScanDeps {
   return {
     fetchIndex: async () => index,
     sampleSize,
@@ -189,7 +189,7 @@ describe('startup lifecycle', () => {
       cooldownMs: 3600_000,
       scan: async () => {
         events.push('scan:start');
-        await refreshCatalogueIndex(db, indexDeps(index, 0, now));
+        await scanCatalogue(db, indexDeps(index, 0, now));
         scanFinished = true;
         events.push('scan:done');
       },
@@ -246,7 +246,7 @@ describe('startup lifecycle', () => {
     const handle = startStartup({
       db,
       scan: () =>
-        refreshCatalogueIndex(
+        scanCatalogue(
           db,
           indexDeps([
             item('100', 'Abundance'),
@@ -309,6 +309,39 @@ describe('startup lifecycle', () => {
     expect(enrichedAgain).toBe(false);
     expect(second.status()).toEqual({ inProgress: false, phase: 'idle' });
     expect(readLastFullEnrichmentAt(db)).toBe('2026-11-10T10:00:00.000Z');
+  });
+
+  it('records a completed manual --all pass but not an aborted one', async () => {
+    insertBook('100', 'Abundance');
+    setSample(['100']);
+    const now = new Date('2026-11-10T10:00:00.000Z');
+
+    await runEnrichCli(['--all'], {
+      db,
+      adapters: registry(fakeAdapter()),
+      delayMs: 0,
+      now: () => now,
+      log: () => {},
+      error: () => {},
+    });
+    expect(readLastFullEnrichmentAt(db)).toBe(now.toISOString());
+
+    db.prepare(
+      "DELETE FROM crawl_state WHERE key = 'last_full_enrichment_at'",
+    ).run();
+
+    const controller = new AbortController();
+    controller.abort();
+    await runEnrichCli(['--all'], {
+      db,
+      adapters: registry(fakeAdapter()),
+      delayMs: 0,
+      now: () => new Date('2026-11-10T11:00:00.000Z'),
+      signal: controller.signal,
+      log: () => {},
+      error: () => {},
+    });
+    expect(readLastFullEnrichmentAt(db)).toBeNull();
   });
 
   it('re-enriches visible records, honours Match overrides and skips hidden books', async () => {

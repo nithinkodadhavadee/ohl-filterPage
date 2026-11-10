@@ -1,8 +1,8 @@
 import {
-  refreshCatalogueIndex,
-  resampleCatalogueIndex,
-  type CatalogueIndexResult,
-} from './catalogue-index.js';
+  resampleCatalogue,
+  scanCatalogue,
+  type CatalogueScanResult,
+} from './catalogue-scan.js';
 import { createAdapterRegistry } from './adapters.js';
 import { loadConfig } from './config.js';
 import { cacheCover } from './covers.js';
@@ -11,12 +11,13 @@ import { parseDelayMs } from './delay.js';
 import { DEFAULT_ENRICH_DELAY_MS } from './enrichment.js';
 import { createLibibAdapter } from './libib.js';
 import { DEFAULT_INDEX_DELAY_MS } from './libib-index.js';
-import { takeSnapshotSafely } from './snapshot.js';
+import { snapshotOnSuccess } from './snapshot.js';
+import { errorMessage } from './util.js';
 
-type Mode = CatalogueIndexResult['mode'];
+type Mode = CatalogueScanResult['mode'];
 
 function parseMode(value: string | undefined): Mode {
-  if (value === 'scan' || value === 'index') return 'index';
+  if (value === 'scan') return 'scan';
   if (value === 'resample') return 'resample';
   throw new Error('Usage: catalogue-cli <scan|resample>');
 }
@@ -47,15 +48,13 @@ try {
       DEFAULT_ENRICH_DELAY_MS,
     ),
     logger: (message: string) => console.error(message),
-    onComplete: () => {
-      takeSnapshotSafely(db, config, { log: (line) => console.error(line) });
-    },
+    onComplete: snapshotOnSuccess(db, config, (line) => console.error(line)),
   };
 
   const result =
     mode === 'resample'
-      ? await resampleCatalogueIndex(db, deps)
-      : await refreshCatalogueIndex(db, deps);
+      ? await resampleCatalogue(db, deps)
+      : await scanCatalogue(db, deps);
 
   console.log(
     `${mode === 'resample' ? 'Resampled' : 'Scanned'} catalogue: ` +
@@ -63,9 +62,8 @@ try {
       `(${result.added} added, ${result.updated} updated, ${result.removed} removed).`,
   );
 } catch (error) {
-  const detail = error instanceof Error ? error.message : String(error);
   console.error(
-    `Could not ${mode === 'resample' ? 'resample' : 'scan'} the catalogue: ${detail}`,
+    `Could not ${mode === 'resample' ? 'resample' : 'scan'} the catalogue: ${errorMessage(error)}`,
   );
   process.exitCode = 1;
 } finally {

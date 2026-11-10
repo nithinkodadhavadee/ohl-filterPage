@@ -6,11 +6,11 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/server/app.js';
 import {
-  refreshCatalogueIndex,
-  resampleCatalogueIndex,
-  type CatalogueIndexDeps,
-} from '../src/server/catalogue-index.js';
-import { refreshBookDetails } from '../src/server/circulation.js';
+  scanCatalogue,
+  resampleCatalogue,
+  type CatalogueScanDeps,
+} from '../src/server/catalogue-scan.js';
+import { sweepBookDetails } from '../src/server/circulation.js';
 import { loadConfig } from '../src/server/config.js';
 import { crawlOne } from '../src/server/crawler.js';
 import { openDatabase } from '../src/server/db.js';
@@ -48,7 +48,7 @@ function item(
 function indexDeps(
   index: LibibIndexItem[],
   sampleSize = 0,
-): CatalogueIndexDeps {
+): CatalogueScanDeps {
   return {
     fetchIndex: async () => index,
     sampleSize,
@@ -154,13 +154,13 @@ function fakeAdapter(searches: string[]): EnrichmentAdapter {
 
 describe('Catalogue scan and hidden book records', () => {
   it('hides a vanished record, keeps its rows and override, then unhides it', async () => {
-    await refreshCatalogueIndex(
+    await scanCatalogue(
       db,
       indexDeps([item('101', 'Abundance'), item('102', 'Beloved')]),
     );
     addBookDependents('102');
 
-    const hidden = await refreshCatalogueIndex(
+    const hidden = await scanCatalogue(
       db,
       indexDeps([item('101', 'Abundance')]),
     );
@@ -172,7 +172,7 @@ describe('Catalogue scan and hidden book records', () => {
     expect(countRows('enrichment')).toBe(1);
     expect(countRows('match_overrides')).toBe(1);
 
-    const restored = await refreshCatalogueIndex(
+    const restored = await scanCatalogue(
       db,
       indexDeps([item('101', 'Abundance'), item('102', 'Beloved')]),
     );
@@ -184,16 +184,16 @@ describe('Catalogue scan and hidden book records', () => {
   });
 
   it('unhides a returning record through the resample path as well', async () => {
-    await refreshCatalogueIndex(
+    await scanCatalogue(
       db,
       indexDeps([item('201', 'Aardvark'), item('202', 'Beloved')]),
     );
     addBookDependents('202');
 
-    await resampleCatalogueIndex(db, indexDeps([item('201', 'Aardvark')]));
+    await resampleCatalogue(db, indexDeps([item('201', 'Aardvark')]));
     expect(hiddenFlag('202')).toBe(1);
 
-    await resampleCatalogueIndex(
+    await resampleCatalogue(
       db,
       indexDeps([item('201', 'Aardvark'), item('202', 'Beloved')]),
     );
@@ -209,7 +209,7 @@ describe('Catalogue scan and hidden book records', () => {
       item('102', 'Beloved'),
     ];
 
-    const result = await refreshCatalogueIndex(db, indexDeps(index, 0));
+    const result = await scanCatalogue(db, indexDeps(index, 0));
 
     expect(result.sampleSize).toBe(3);
     expect(countRows('book_records')).toBe(3);
@@ -226,7 +226,7 @@ describe('Catalogue scan and hidden book records', () => {
       ),
     ];
 
-    const result = await refreshCatalogueIndex(db, indexDeps(index, 50));
+    const result = await scanCatalogue(db, indexDeps(index, 50));
 
     expect(result.sampleSize).toBe(50);
     expect(countRows('book_records')).toBe(50);
@@ -309,7 +309,7 @@ describe('hidden records are skipped by the sweeps', () => {
     setSample(['100', '101']);
     const calls: string[] = [];
 
-    const result = await refreshBookDetails(db, {
+    const result = await sweepBookDetails(db, {
       fetchDetail: async (joinId) => {
         calls.push(joinId);
         return detail(joinId);
