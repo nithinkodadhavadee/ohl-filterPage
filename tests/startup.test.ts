@@ -417,6 +417,64 @@ describe('startup lifecycle', () => {
     expect(readLastFullEnrichmentAt(db)).toBeNull();
   });
 
+  it('stops without waiting for an in-flight Catalogue scan', async () => {
+    let releaseScan: () => void = () => {};
+    const scanGate = new Promise<void>((resolve) => {
+      releaseScan = resolve;
+    });
+    let scanStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      scanStarted = resolve;
+    });
+
+    const handle = startStartup({
+      db,
+      scan: () => {
+        scanStarted();
+        return scanGate;
+      },
+      startSweep: () => fakeSweep(),
+      enrich: async () => {},
+    });
+
+    await started;
+    await expect(handle.stop()).resolves.toBeUndefined();
+
+    releaseScan();
+    await handle.done;
+  });
+
+  it('stops cleanly when the Book sweep fails', async () => {
+    const logs: string[] = [];
+    let sweepStopped = false;
+    let sweepStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      sweepStarted = resolve;
+    });
+
+    const handle = startStartup({
+      db,
+      logger: (message) => logs.push(message),
+      scan: async () => {},
+      startSweep: () => {
+        sweepStarted();
+        return {
+          stop: () => {
+            sweepStopped = true;
+          },
+          done: Promise.reject(new Error('sweep failed')),
+        };
+      },
+      enrich: async () => {},
+    });
+
+    await started;
+    await expect(handle.stop()).resolves.toBeUndefined();
+
+    expect(sweepStopped).toBe(true);
+    expect(logs).toEqual(['Book sweep stopped unexpectedly: sweep failed']);
+  });
+
   it('serves stored data while the startup scan is still running', async () => {
     const seeded = openDatabase(loadConfig({ dataDir }));
     seedDatabase(seeded, { coversDir: loadConfig({ dataDir }).coversDir });
