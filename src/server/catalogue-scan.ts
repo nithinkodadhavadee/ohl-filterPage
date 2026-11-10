@@ -38,11 +38,6 @@ interface ExistingRecord {
   hidden: number;
 }
 
-interface PreparedItem {
-  item: LibibIndexItem;
-  coverPath: string | null;
-}
-
 function readSampleIds(db: DatabaseSync): string[] | null {
   const statement = db.prepare('SELECT value FROM crawl_state WHERE key = ?');
   const result = statement.get(SAMPLE_KEY) as { value: string | null } | undefined;
@@ -93,15 +88,6 @@ async function persistCatalogueScan(
     .all() as unknown as ExistingRecord[];
   for (const record of existingRows) existing.set(record.join_id, record);
 
-  const prepared: PreparedItem[] = [];
-  for (const item of uniqueTarget) {
-    const previous = existing.get(item.joinId);
-    const coverPath = deps.cacheCover
-      ? await deps.cacheCover(item)
-      : (previous?.cover_path ?? null);
-    prepared.push({ item, coverPath });
-  }
-
   const targetIds = new Set(uniqueTarget.map((item) => item.joinId));
   const vanishedIds = [...existing.keys()].filter(
     (joinId) => !indexIds.has(joinId),
@@ -138,6 +124,9 @@ async function persistCatalogueScan(
   const unhideBook = db.prepare(
     'UPDATE book_records SET hidden = 0 WHERE join_id = ?',
   );
+  const updateCover = db.prepare(
+    'UPDATE book_records SET cover_path = ? WHERE join_id = ?',
+  );
 
   let added = 0;
   let updated = 0;
@@ -145,7 +134,7 @@ async function persistCatalogueScan(
 
   db.exec('BEGIN IMMEDIATE');
   try {
-    for (const { item, coverPath } of prepared) {
+    for (const item of uniqueTarget) {
       const previous = existing.get(item.joinId);
       if (previous) {
         updated += 1;
@@ -158,7 +147,7 @@ async function persistCatalogueScan(
         item.joinId,
         item.title,
         item.author,
-        coverPath,
+        previous?.cover_path ?? null,
         previous?.first_seen_at ?? now,
       );
 
@@ -186,6 +175,33 @@ async function persistCatalogueScan(
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
+  }
+
+  if (deps.cacheCover) {
+    for (const item of uniqueTarget) {
+      let coverPath: string | null = null;
+      try {
+        coverPath = await deps.cacheCover(item);
+        if (!coverPath && item.coverUrl) {
+          deps.logger?.(
+            `Could not cache cover for book record ${item.joinId}.`,
+          );
+        }
+      } catch (error) {
+        deps.logger?.(
+          `Could not cache cover for book record ${item.joinId}: ${errorMessage(error)}`,
+        );
+      }
+
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        updateCover.run(coverPath, item.joinId);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+    }
   }
 
   if (addedIds.length > 0 && deps.adapters && deps.adapters.size > 0) {
@@ -218,7 +234,7 @@ async function persistCatalogueScan(
 
   const result: CatalogueScanResult = {
     mode,
-    sampleSize: prepared.length,
+    sampleSize: uniqueTarget.length,
     added,
     updated,
     removed: removedIds.length,
