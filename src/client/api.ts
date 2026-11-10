@@ -14,7 +14,7 @@ export async function fetchBooks(query: BooksQuery = {}): Promise<BooksResponse>
   if (query.sort) params.set('sort', query.sort);
   if (query.direction) params.set('direction', query.direction);
   if (query.seed) params.set('seed', query.seed);
-  if (query.author) params.set('author', query.author);
+  for (const author of query.authors ?? []) params.append('author', author);
   for (const tag of query.tags ?? []) params.append('tag', tag);
   for (const subject of query.subjects ?? []) params.append('subject', subject);
   for (const bucket of query.holds ?? []) params.append('holds', bucket);

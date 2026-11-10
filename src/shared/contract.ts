@@ -103,7 +103,7 @@ export interface BooksQuery {
   sort?: SortField;
   direction?: SortDirection;
   seed?: string;
-  author?: string;
+  authors?: string[];
   tags?: string[];
   subjects?: string[];
   holds?: HoldBucket[];

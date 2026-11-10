@@ -7,15 +7,10 @@ import {
   UNMATCHED_FILTERS,
   defaultDirectionFor,
   hasNoEnrichmentData,
-  isHoldBucket,
-  isSortField,
-  normalizeUnmatchedFilter,
   type Book,
-  type BooksQuery,
   type BooksResponse,
   type FacetsResponse,
   type HoldBucket,
-  type SortDirection,
   type SortField,
   type UnmatchedFilter,
 } from '../shared/contract';
@@ -31,13 +26,22 @@ import {
   FILTER_PANEL_STORAGE_KEY,
   SUBJECTS_FACET_STORAGE_KEY,
   browserSessionStorage,
-  parseOptionalNumber,
   readStoredBoolean,
   subjectFacetSummary,
   writeStoredBoolean,
 } from './filter-ui';
-import { BOOKS_BATCH_SIZE, appendCataloguePage } from './paging';
+import { appendCataloguePage } from './paging';
 import type { CrawlerStatus, ViewMode } from './types';
+import {
+  activeFilterCount,
+  booksQueryForView,
+  createSeed,
+  ensureSeed,
+  parseViewState,
+  viewQueryKey,
+  viewToUrl,
+  type ViewState,
+} from './view-state';
 
 function formatDate(value: string | null): string {
   if (!value) return 'unknown';
@@ -517,158 +521,90 @@ function BookTable({
   );
 }
 
-interface ViewState {
-  q: string;
-  sort: SortField;
-  direction: SortDirection;
-  seed: string | null;
-  author: string;
-  tags: string[];
-  subjects: string[];
-  holds: HoldBucket[];
-  availableOnly: boolean;
-  ratingMin: string;
-  includeLowSample: boolean;
-  pagesMin: string;
-  pagesMax: string;
-  unmatched: UnmatchedFilter;
-  view: ViewMode;
-}
+function AuthorMultiSelect({
+  authors,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  authors: FacetsResponse['authors'];
+  selected: string[];
+  onToggle: (author: string) => void;
+  onClear: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const trimmedSearch = search.trim().toLowerCase();
+  const options = trimmedSearch
+    ? authors.filter((author) =>
+        author.value.toLowerCase().includes(trimmedSearch),
+      )
+    : authors;
 
-function createSeed(): string {
-  const cryptoApi = globalThis.crypto;
-  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
-    return cryptoApi.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function parseViewState(search: string): ViewState {
-  const params = new URLSearchParams(search);
-  const q = (params.get('q') ?? '').trim();
-  const rawSort = params.get('sort');
-  let sort: SortField = q ? 'relevance' : 'title';
-
-  if (rawSort && isSortField(rawSort)) {
-    sort = rawSort;
-  }
-  if (!q && sort === 'relevance') sort = 'title';
-
-  const rawDirection = params.get('direction');
-  const direction: SortDirection =
-    rawDirection === 'asc' || rawDirection === 'desc'
-      ? rawDirection
-      : defaultDirectionFor(sort);
-
-  const tags = [...new Set(params.getAll('tag').filter(Boolean))];
-  const subjects = [...new Set(params.getAll('subject').filter(Boolean))];
-  const holds = [
-    ...new Set(
-      params
-        .getAll('holds')
-        .filter((value): value is HoldBucket => isHoldBucket(value)),
-    ),
-  ];
-  const unmatched = normalizeUnmatchedFilter(params.get('unmatched'));
-
-  return {
-    q,
-    sort,
-    direction,
-    seed: params.get('seed'),
-    author: params.get('author') ?? '',
-    tags,
-    subjects,
-    holds,
-    availableOnly:
-      params.get('available') === '1' || params.get('available') === 'true',
-    ratingMin: params.get('rating_min') ?? '',
-    includeLowSample:
-      params.get('include_low_sample') === '1' ||
-      params.get('include_low_sample') === 'true',
-    pagesMin: params.get('pages_min') ?? '',
-    pagesMax: params.get('pages_max') ?? '',
-    unmatched,
-    view: params.get('view') === 'table' ? 'table' : 'grid',
-  };
-}
-
-function activeFilterCount(view: ViewState): number {
   return (
-    (view.author.trim() ? 1 : 0) +
-    view.tags.length +
-    view.subjects.length +
-    view.holds.length +
-    (view.availableOnly ? 1 : 0) +
-    (view.ratingMin.trim() ? 1 : 0) +
-    (view.includeLowSample ? 1 : 0) +
-    (view.pagesMin.trim() ? 1 : 0) +
-    (view.pagesMax.trim() ? 1 : 0) +
-    (view.unmatched !== 'all' ? 1 : 0)
+    <fieldset className="filter-group author-filter">
+      <legend>Authors</legend>
+      {selected.length > 0 ? (
+        <div className="author-selection">
+          <ul className="chip-list author-chips" aria-label="Selected authors">
+            {selected.map((author) => (
+              <li key={author}>
+                <button
+                  type="button"
+                  className="chip author-chip"
+                  onClick={() => onToggle(author)}
+                  aria-label={`Remove ${author}`}
+                >
+                  <span>{author}</span>
+                  <span aria-hidden="true"> ×</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="clear-group" onClick={onClear}>
+            Clear
+          </button>
+        </div>
+      ) : null}
+      <label className="filter-field">
+        <span className="visually-hidden">Search authors</span>
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search authors"
+          autoComplete="off"
+        />
+      </label>
+      <div
+        className="filter-options filter-options-authors"
+        role="group"
+        aria-label="Author options"
+      >
+        {options.length > 0 ? (
+          options.map((author) => {
+            const checked = selected.some(
+              (name) => name.toLowerCase() === author.value.toLowerCase(),
+            );
+            return (
+              <label className="filter-option" key={author.value}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggle(author.value)}
+                />
+                <span>{author.value}</span>
+                <span className="filter-option-count">{author.count}</span>
+              </label>
+            );
+          })
+        ) : (
+          <p className="muted filter-empty">
+            No authors match {search.trim() ? `“${search.trim()}”` : 'yet'}.
+          </p>
+        )}
+      </div>
+    </fieldset>
   );
-}
-
-function ensureSeed(view: ViewState): ViewState {
-  if (view.sort === 'random' && !view.seed) {
-    return { ...view, seed: createSeed() };
-  }
-  return view;
-}
-
-function viewToUrl(view: ViewState): string {
-  const params = new URLSearchParams();
-  if (view.q) params.set('q', view.q);
-  params.set('sort', view.sort);
-  params.set('direction', view.direction);
-  if (view.sort === 'random' && view.seed) params.set('seed', view.seed);
-  if (view.author.trim()) params.set('author', view.author.trim());
-  for (const tag of view.tags) params.append('tag', tag);
-  for (const subject of view.subjects) params.append('subject', subject);
-  for (const bucket of view.holds) params.append('holds', bucket);
-  if (view.availableOnly) params.set('available', '1');
-  if (view.ratingMin.trim()) params.set('rating_min', view.ratingMin.trim());
-  if (view.includeLowSample) params.set('include_low_sample', '1');
-  if (view.pagesMin.trim()) params.set('pages_min', view.pagesMin.trim());
-  if (view.pagesMax.trim()) params.set('pages_max', view.pagesMax.trim());
-  if (view.unmatched !== 'all') params.set('unmatched', view.unmatched);
-  if (view.view === 'table') params.set('view', 'table');
-  const search = params.toString();
-  return search
-    ? `${window.location.pathname}?${search}`
-    : window.location.pathname;
-}
-
-function filterQueryForView(
-  view: ViewState,
-): Omit<BooksQuery, 'limit' | 'offset'> {
-  return {
-    q: view.q || undefined,
-    sort: view.sort,
-    direction: view.direction,
-    seed: view.sort === 'random' ? view.seed ?? undefined : undefined,
-    author: view.author.trim() || undefined,
-    tags: view.tags,
-    subjects: view.subjects,
-    holds: view.holds,
-    availableOnly: view.availableOnly,
-    ratingMin: parseOptionalNumber(view.ratingMin),
-    includeLowSample: view.includeLowSample,
-    pagesMin: parseOptionalNumber(view.pagesMin),
-    pagesMax: parseOptionalNumber(view.pagesMax),
-    unmatched: view.unmatched,
-  };
-}
-
-function viewQueryKey(view: ViewState): string {
-  return JSON.stringify(filterQueryForView(view));
-}
-
-function booksQueryForView(view: ViewState, offset: number): BooksQuery {
-  return {
-    ...filterQueryForView(view),
-    limit: BOOKS_BATCH_SIZE,
-    offset,
-  };
 }
 
 function bookPermalink(view: ViewState, joinId: string): string {
@@ -962,8 +898,21 @@ export function App() {
     );
   };
 
-  const handleAuthorChange = (author: string) => {
-    updateView({ ...view, author });
+  const toggleAuthor = (author: string) => {
+    const exists = view.authors.some(
+      (entry) => entry.toLowerCase() === author.toLowerCase(),
+    );
+    const authors = exists
+      ? view.authors.filter(
+          (entry) => entry.toLowerCase() !== author.toLowerCase(),
+        )
+      : [...view.authors, author];
+    updateView({ ...view, authors }, { push: true });
+  };
+
+  const clearAuthors = () => {
+    if (view.authors.length === 0) return;
+    updateView({ ...view, authors: [] }, { push: true });
   };
 
   const toggleTag = (tag: string) => {
@@ -1032,7 +981,7 @@ export function App() {
     updateView(
       {
         ...view,
-        author: '',
+        authors: [],
         tags: [],
         subjects: [],
         holds: [],
@@ -1166,22 +1115,12 @@ export function App() {
           </div>
 
           <div className="filters-body" id="filters-body" hidden={!filtersOpen}>
-            <label className="filter-field">
-              <span>Author</span>
-              <input
-                type="search"
-                value={view.author}
-                onChange={(event) => handleAuthorChange(event.target.value)}
-                placeholder="Filter by author"
-                autoComplete="off"
-                list="author-suggestions"
-              />
-            </label>
-            <datalist id="author-suggestions">
-              {(facets?.authors ?? []).map((author) => (
-                <option key={author.value} value={author.value} />
-              ))}
-            </datalist>
+            <AuthorMultiSelect
+              authors={facets?.authors ?? []}
+              selected={view.authors}
+              onToggle={toggleAuthor}
+              onClear={clearAuthors}
+            />
 
             <fieldset className="filter-group">
               <legend>Libib tags</legend>
