@@ -6,6 +6,7 @@ import { loadConfig } from './config.js';
 import { parseCsv } from './csv.js';
 import { openDatabase } from './db.js';
 import type { EnrichmentAdapterRegistry } from './enrichment.js';
+import { finishRun, startRun, type RunTrigger } from './run-log.js';
 import { snapshotOnSuccess } from './snapshot.js';
 
 const USAGE = 'Usage: npm run overrides:import -- <path>';
@@ -31,6 +32,7 @@ export interface OverrideImportDeps {
   readFile?: (path: string) => string;
   log?: (line: string) => void;
   error?: (line: string) => void;
+  trigger?: RunTrigger;
   onImported?: (result: OverrideImportResult) => void;
 }
 
@@ -95,11 +97,34 @@ export function runOverrideImportCli(
     issues: OverrideImportIssue[] = [],
   ): OverrideImportResult => ({ exitCode, imported, updated, issues });
 
+  const clock = deps.now ?? (() => new Date());
+  const runId = startRun(deps.db, {
+    kind: 'override_import',
+    trigger: deps.trigger ?? 'manual',
+    startedAt: clock(),
+  });
+  const finish = (
+    status: 'ok' | 'partial' | 'failed',
+    counts: Record<string, number>,
+    runError: string | null = null,
+    note: string | null = null,
+  ): void => {
+    finishRun(deps.db, runId, {
+      status,
+      counts,
+      error: runError,
+      note,
+      finishedAt: clock(),
+    });
+  };
+
   let filePath: string;
   try {
     filePath = parsePath(argv);
   } catch (caught) {
-    error(caught instanceof Error ? caught.message : String(caught));
+    const message = caught instanceof Error ? caught.message : String(caught);
+    error(message);
+    finish('failed', { imported: 0, updated: 0, issues: 0 }, message);
     return result(1);
   }
 
@@ -107,17 +132,19 @@ export function runOverrideImportCli(
   try {
     text = readFile(filePath);
   } catch (caught) {
-    error(
-      `Could not read ${filePath}: ${
-        caught instanceof Error ? caught.message : String(caught)
-      }`,
-    );
+    const message = `Could not read ${filePath}: ${
+      caught instanceof Error ? caught.message : String(caught)
+    }`;
+    error(message);
+    finish('failed', { imported: 0, updated: 0, issues: 0 }, message, filePath);
     return result(1);
   }
 
   const rows = parseCsv(text);
   if (rows.length === 0) {
-    error(`CSV file ${filePath} is empty.`);
+    const message = `CSV file ${filePath} is empty.`;
+    error(message);
+    finish('failed', { imported: 0, updated: 0, issues: 0 }, message, filePath);
     return result(1);
   }
 
@@ -125,6 +152,12 @@ export function runOverrideImportCli(
   const { index, issue: headerIssue } = headerIndex(header.fields);
   if (headerIssue) {
     error(`Line ${header.line}: ${headerIssue}`);
+    finish(
+      'failed',
+      { imported: 0, updated: 0, issues: 0 },
+      headerIssue,
+      filePath,
+    );
     return result(1);
   }
 
@@ -242,6 +275,12 @@ export function runOverrideImportCli(
     deps.db.exec('COMMIT');
   } catch (caught) {
     deps.db.exec('ROLLBACK');
+    finish(
+      'failed',
+      { imported, updated, issues: issues.length },
+      caught instanceof Error ? caught.message : String(caught),
+      filePath,
+    );
     throw caught;
   }
 
@@ -251,6 +290,19 @@ export function runOverrideImportCli(
   for (const issue of issues) {
     error(`Line ${issue.line}: ${issue.message}`);
   }
+
+  const status =
+    issues.length === 0
+      ? 'ok'
+      : imported + updated > 0
+        ? 'partial'
+        : 'failed';
+  finish(
+    status,
+    { imported, updated, issues: issues.length },
+    issues.length > 0 ? `${issues.length} row(s) failed to import.` : null,
+    filePath,
+  );
 
   const outcome = result(
     issues.length > 0 ? 1 : 0,

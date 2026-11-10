@@ -60,6 +60,21 @@ describe('GET /api/status', () => {
       },
       lastOutcome: 'throttled',
       lastError: 'Libib refused rate',
+      enrichment: {
+        lastFullPassAt: null,
+        inProgress: false,
+        nextScheduledRunAt: null,
+        lastError: null,
+        counts: {
+          enriched: 0,
+          unmatched: 0,
+          failed: 0,
+          pending: 0,
+          total: 0,
+        },
+        history: [],
+      },
+      runHistory: [],
     });
   });
 

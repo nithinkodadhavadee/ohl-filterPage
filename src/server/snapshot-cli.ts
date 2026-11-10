@@ -1,7 +1,14 @@
+import { existsSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
 import { loadConfig, type AppConfig } from './config.js';
 import { openDatabase } from './db.js';
+import {
+  finishRun,
+  recordRun,
+  startRun,
+  type RecordRunInput,
+} from './run-log.js';
 import {
   exportSnapshot,
   restoreSnapshot,
@@ -37,7 +44,10 @@ export function runSnapshotCommand(
   const error = deps.error ?? ((line: string) => console.error(line));
 
   try {
-    const snapshot = takeSnapshot(deps.db, config, { now: deps.now });
+    const snapshot = takeSnapshot(deps.db, config, {
+      now: deps.now,
+      trigger: 'manual',
+    });
     log(`Snapshot written to ${snapshot}.`);
     return 0;
   } catch (caught) {
@@ -47,8 +57,23 @@ export function runSnapshotCommand(
 }
 
 export interface RestoreCommandDeps {
+  now?: () => Date;
   log?: (line: string) => void;
   error?: (line: string) => void;
+}
+
+function recordRestoreRun(config: AppConfig, input: RecordRunInput): void {
+  if (!existsSync(config.dbPath)) return;
+  try {
+    const db = openDatabase(config);
+    try {
+      recordRun(db, input);
+    } finally {
+      db.close();
+    }
+  } catch {
+    // Recording the restore must never mask the restore outcome.
+  }
 }
 
 export function runRestoreCommand(
@@ -59,6 +84,8 @@ export function runRestoreCommand(
   const log = deps.log ?? ((line: string) => console.log(line));
   const error = deps.error ?? ((line: string) => console.error(line));
   const paths = positional(args);
+  const clock = deps.now ?? (() => new Date());
+  const startedAt = clock();
 
   if (paths.length !== 1) {
     error(USAGE);
@@ -68,9 +95,26 @@ export function runRestoreCommand(
   try {
     restoreSnapshot(config, paths[0]);
     log(`Restored database from ${paths[0]}.`);
+    recordRestoreRun(config, {
+      kind: 'restore',
+      trigger: 'manual',
+      status: 'ok',
+      startedAt,
+      finishedAt: clock(),
+      note: paths[0],
+    });
     return 0;
   } catch (caught) {
     error(errorMessage(caught));
+    recordRestoreRun(config, {
+      kind: 'restore',
+      trigger: 'manual',
+      status: 'failed',
+      startedAt,
+      finishedAt: clock(),
+      error: errorMessage(caught),
+      note: paths[0],
+    });
     return 1;
   }
 }
@@ -89,6 +133,14 @@ export function runExportCommand(
     return 1;
   }
 
+  const clock = deps.now ?? (() => new Date());
+  const runId = startRun(deps.db, {
+    kind: 'export',
+    trigger: 'manual',
+    startedAt: clock(),
+    note: paths.length === 2 ? paths[1] : paths[0],
+  });
+
   try {
     const source =
       paths.length === 2
@@ -96,9 +148,19 @@ export function runExportCommand(
         : takeSnapshot(deps.db, config, { now: deps.now });
     const destination = paths.length === 2 ? paths[1] : paths[0];
     exportSnapshot(source, destination);
+    finishRun(deps.db, runId, {
+      status: 'ok',
+      note: destination,
+      finishedAt: clock(),
+    });
     log(`Exported snapshot to ${destination}.`);
     return 0;
   } catch (caught) {
+    finishRun(deps.db, runId, {
+      status: 'failed',
+      error: errorMessage(caught),
+      finishedAt: clock(),
+    });
     error(`Could not export snapshot: ${errorMessage(caught)}`);
     return 1;
   }

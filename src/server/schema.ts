@@ -54,6 +54,19 @@ CREATE TABLE IF NOT EXISTS crawl_state (
   value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS run_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  trigger TEXT NOT NULL,
+  status TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  duration INTEGER,
+  counts TEXT,
+  error TEXT,
+  note TEXT
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS books_fts USING fts5(
   join_id UNINDEXED,
   title,
@@ -64,4 +77,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS books_fts USING fts5(
 
 CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag);
 CREATE INDEX IF NOT EXISTS idx_book_subjects_subject ON book_subjects(subject);
+CREATE INDEX IF NOT EXISTS idx_run_log_kind_started_at
+  ON run_log(kind, started_at DESC, id DESC);
 `;

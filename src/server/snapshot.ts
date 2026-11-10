@@ -5,11 +5,13 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
   unlinkSync,
 } from 'node:fs';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { AppConfig } from './config.js';
+import { recordRun, type RunTrigger } from './run-log.js';
 import {
   clearStaleServerLock,
   isServerRunning,
@@ -23,6 +25,7 @@ export const SNAPSHOT_EXTENSION = '.sqlite';
 export interface TakeSnapshotOptions {
   retain?: number;
   now?: () => Date;
+  trigger?: RunTrigger;
 }
 
 export function snapshotFileName(now: Date): string {
@@ -95,17 +98,40 @@ export function takeSnapshot(
 ): string {
   mkdirSync(config.snapshotsDir, { recursive: true });
 
-  const now = options.now?.() ?? new Date();
-  const target = uniqueSnapshotPath(config, snapshotFileName(now));
+  const clock = () => options.now?.() ?? new Date();
+  const startedAt = clock();
+  const target = uniqueSnapshotPath(config, snapshotFileName(startedAt));
+  const trigger = options.trigger ?? 'automatic';
 
   try {
     db.prepare('VACUUM INTO ?').run(target);
   } catch (error) {
     rmSync(target, { force: true });
+    recordRun(db, {
+      kind: 'snapshot',
+      trigger,
+      status: 'failed',
+      startedAt,
+      finishedAt: clock(),
+      error: errorMessage(error),
+      note: path.basename(target),
+    });
     throw error;
   }
 
   pruneSnapshots(config, options.retain ?? config.snapshotRetain);
+
+  const bytes = existsSync(target) ? statSync(target).size : 0;
+  recordRun(db, {
+    kind: 'snapshot',
+    trigger,
+    status: 'ok',
+    startedAt,
+    finishedAt: clock(),
+    counts: { bytes },
+    note: path.basename(target),
+  });
+
   return target;
 }
 
