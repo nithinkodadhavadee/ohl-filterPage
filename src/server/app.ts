@@ -8,14 +8,28 @@ import {
   getBooks,
   getFacets,
 } from './books.js';
+import {
+  refreshCatalogueIndex,
+  type CatalogueIndexDeps,
+} from './catalogue-index.js';
 import { loadConfig } from './config.js';
+import { cacheCover } from './covers.js';
 import {
   getCrawlerStatus,
   startCrawler,
-  type CrawlerHandle,
 } from './crawler.js';
 import { openDatabase } from './db.js';
+import { parseDelayMs } from './delay.js';
+import { DEFAULT_ENRICH_DELAY_MS } from './enrichment.js';
+import { runEnrichCli } from './enrich-cli.js';
 import { createLibibAdapter } from './libib.js';
+import { DEFAULT_INDEX_DELAY_MS } from './libib-index.js';
+import {
+  startStartup,
+  type StartupDeps,
+  type StartupHandle,
+  type StartupTaskContext,
+} from './startup.js';
 import {
   isHoldBucket,
   isSortField,
@@ -25,12 +39,20 @@ import {
   type UnmatchedFilter,
 } from '../shared/contract.js';
 
+export interface StartupOverrides {
+  scan?: () => Promise<unknown>;
+  enrich?: (context: StartupTaskContext) => Promise<unknown>;
+  startSweep?: StartupDeps['startSweep'];
+}
+
 export interface BuildAppOptions {
   dataDir?: string;
   port?: number;
   logger?: boolean;
   serveStatic?: boolean;
   crawler?: boolean;
+  startup?: boolean;
+  startupDeps?: StartupOverrides;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -91,7 +113,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const db = openDatabase(config);
   const app = Fastify({ logger: options.logger ?? false });
   const crawlerEnabled = options.crawler ?? false;
-  let crawler: CrawlerHandle | null = null;
+  const startupEnabled = options.startup ?? crawlerEnabled;
+  let startup: StartupHandle | null = null;
 
   const clientDir = path.resolve(process.cwd(), 'dist/client');
   if (options.serveStatic && existsSync(clientDir)) {
@@ -105,15 +128,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   app.addHook('onClose', async () => {
-    crawler?.stop();
-    await crawler?.done;
+    await startup?.stop();
     db.close();
   });
 
   app.get('/health', async () => ({ status: 'ok' }));
 
   app.get('/api/status', async () =>
-    getCrawlerStatus(db, { enabled: crawlerEnabled }),
+    getCrawlerStatus(db, {
+      enabled: crawlerEnabled,
+      startup: startup?.status(),
+    }),
   );
 
   app.get<{
@@ -184,19 +209,65 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     return book;
   });
 
-  if (crawlerEnabled) {
+  if (startupEnabled) {
+    const logger = options.logger
+      ? (message: string) => app.log.warn(message)
+      : undefined;
+    const indexDelayMs = parseDelayMs(
+      process.env.LIBIB_REQUEST_DELAY_MS,
+      DEFAULT_INDEX_DELAY_MS,
+    );
     const libib = createLibibAdapter({
       baseUrl: process.env.LIBIB_BASE_URL,
+      indexDelayMs,
     });
-    crawler = startCrawler({
+    const enrichDelayMs = parseDelayMs(
+      process.env.ENRICH_REQUEST_DELAY_MS ??
+        process.env.LIBIB_REQUEST_DELAY_MS,
+      DEFAULT_ENRICH_DELAY_MS,
+    );
+
+    const scan =
+      options.startupDeps?.scan ??
+      (() =>
+        refreshCatalogueIndex(db, {
+          fetchIndex: () => libib.fetchIndex(),
+          sampleSize: config.sampleSize,
+          cacheCover: (item) =>
+            cacheCover(item, { coversDir: config.coversDir }),
+          logger,
+        } satisfies CatalogueIndexDeps));
+
+    const enrich =
+      options.startupDeps?.enrich ??
+      ((context) =>
+        runEnrichCli(['--all'], {
+          db,
+          adapters: createAdapterRegistry(),
+          delayMs: enrichDelayMs,
+          signal: context.signal,
+          error: logger ?? ((line: string) => console.error(line)),
+        }));
+
+    const startSweep =
+      options.startupDeps?.startSweep ??
+      (() =>
+        startCrawler({
+          db,
+          fetchDetail: (joinId) => libib.fetchDetail(joinId),
+          adapters: createAdapterRegistry(),
+          cycleDelayMs: config.crawlerCycleDelayMs,
+          maxBackoffMs: config.crawlerMaxBackoffMs,
+          logger,
+        }));
+
+    startup = startStartup({
       db,
-      fetchDetail: (joinId) => libib.fetchDetail(joinId),
-      adapters: createAdapterRegistry(),
-      cycleDelayMs: config.crawlerCycleDelayMs,
-      maxBackoffMs: config.crawlerMaxBackoffMs,
-      logger: options.logger
-        ? (message) => app.log.warn(message)
-        : undefined,
+      scan,
+      enrich,
+      startSweep,
+      cooldownMs: config.enrichmentCooldownMs,
+      logger,
     });
   }
 
