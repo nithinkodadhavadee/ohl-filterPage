@@ -357,3 +357,9 @@ Canonical CLI: `catalogue:scan`, `catalogue:resample`, `sweep` (`--book`, `--del
 ### Decisions recorded
 
 ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots). ADR-0005 and ADR-0006 are superseded.
+
+## Later Backlog
+
+Recorded after Pass 3; not scheduled.
+
+1. **Filter by multiple authors.** The author filter is a single text box (a case-insensitive substring over one author string). It should become a multi-select author picker, showing books by any selected author (OR), with counts and URL state. Open question: Libib stores one author string per book record, sometimes containing several names ("Peter H. Diamandis, Steven Kotler"), so the picker must either list whole strings or split them into individuals; splitting risks "Last, First" formats and names containing commas. Ticket 27.

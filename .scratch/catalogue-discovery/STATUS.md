@@ -45,3 +45,8 @@ Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-
 ## Superseded
 
 - [ ] 11 Bootstrap and snapshots — superseded by 20, 21, 22, 23
+
+## Later (needs-triage)
+
+- [ ] 27 Filter by multiple authors — multi-select author picker, OR semantics; author-string vs individual-name question open
+
