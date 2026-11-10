@@ -12,6 +12,7 @@ import {
   type EnrichmentAdapter,
   type EnrichmentOutcome,
 } from './enrichment.js';
+import { takeSnapshotSafely } from './snapshot.js';
 
 export interface EnrichCliDeps {
   db: DatabaseSync;
@@ -23,6 +24,7 @@ export interface EnrichCliDeps {
   log?: (line: string) => void;
   error?: (line: string) => void;
   signal?: AbortSignal;
+  onComplete?: (result: EnrichCliResult) => void | Promise<void>;
 }
 
 export type EnrichSelection =
@@ -278,11 +280,17 @@ export async function runEnrichCli(
       `${summary.failed} failed.`,
   );
 
-  return {
+  const result: EnrichCliResult = {
     exitCode: summary.failed > 0 ? 1 : 0,
     summary,
     outcomes,
   };
+
+  if (selection.kind === 'all') {
+    await deps.onComplete?.(result);
+  }
+
+  return result;
 }
 
 const isMain =
@@ -304,6 +312,9 @@ if (isMain) {
       db,
       adapters,
       delayMs,
+      onComplete: () => {
+        takeSnapshotSafely(db, config, { log: (line) => console.error(line) });
+      },
     });
     process.exitCode = result.exitCode;
   } finally {

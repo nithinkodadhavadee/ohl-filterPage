@@ -15,6 +15,7 @@ export interface CatalogueIndexDeps {
   sleep?: (milliseconds: number) => Promise<void>;
   logger?: (message: string) => void;
   now?: () => Date;
+  onComplete?: (result: CatalogueIndexResult) => void | Promise<void>;
 }
 
 const defaultSleep = (milliseconds: number): Promise<void> =>
@@ -204,13 +205,15 @@ async function persistSample(
     }
   }
 
-  return {
+  const result: CatalogueIndexResult = {
     mode,
     sampleSize: prepared.length,
     added,
     updated,
     removed: removedIds.length,
   };
+  await deps.onComplete?.(result);
+  return result;
 }
 
 export async function refreshCatalogueIndex(

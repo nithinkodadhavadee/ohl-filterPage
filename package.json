@@ -22,6 +22,9 @@
     "enrich": "tsx src/server/enrich-cli.ts",
     "overrides:import": "tsx src/server/override-cli.ts",
     "export:unmatched": "tsx src/server/export-unmatched-cli.ts",
+    "snapshot": "tsx src/server/snapshot-cli.ts snapshot",
+    "restore": "tsx src/server/snapshot-cli.ts restore",
+    "export": "tsx src/server/snapshot-cli.ts export",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.json --noEmit"
