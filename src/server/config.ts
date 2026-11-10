@@ -10,12 +10,15 @@ export interface AppConfig {
   crawlerEnabled: boolean;
   crawlerCycleDelayMs: number;
   crawlerMaxBackoffMs: number;
+  snapshotsDir: string;
+  snapshotRetain: number;
 }
 
 export interface ConfigOverrides {
   port?: number;
   dataDir?: string;
   sampleSize?: number;
+  snapshotRetain?: number;
 }
 
 const DEFAULT_PORT = 3000;
@@ -23,6 +26,7 @@ const DEFAULT_DATA_DIR = './data';
 const DEFAULT_SAMPLE_SIZE = 0;
 const DEFAULT_CYCLE_DELAY_SECONDS = 30;
 const DEFAULT_MAX_BACKOFF_SECONDS = 900;
+const DEFAULT_SNAPSHOT_RETAIN = 10;
 
 export const DEFAULT_CRAWLER_CYCLE_DELAY_MS =
   DEFAULT_CYCLE_DELAY_SECONDS * 1000;
@@ -41,6 +45,15 @@ function parseSampleSize(value: string | undefined): number {
   if (value === undefined || value.trim() === '') return DEFAULT_SAMPLE_SIZE;
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_SAMPLE_SIZE;
+}
+
+function parsePositiveInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
+  if (value === undefined || value.trim() === '') return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function parseSeconds(value: string | undefined, fallback: number): number {
@@ -78,9 +91,17 @@ export function loadConfig(overrides: ConfigOverrides = {}): AppConfig {
       process.env.CRAWLER_MAX_BACKOFF_SECONDS,
       DEFAULT_CRAWLER_MAX_BACKOFF_MS,
     ),
+    snapshotsDir: path.join(dataDir, 'snapshots'),
+    snapshotRetain:
+      overrides.snapshotRetain ??
+      parsePositiveInteger(
+        process.env.SNAPSHOT_RETAIN,
+        DEFAULT_SNAPSHOT_RETAIN,
+      ),
   };
 }
 
 export function ensureDataDirs(config: AppConfig): void {
   fs.mkdirSync(config.coversDir, { recursive: true });
+  fs.mkdirSync(config.snapshotsDir, { recursive: true });
 }

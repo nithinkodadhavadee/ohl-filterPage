@@ -11,6 +11,7 @@ import { parseDelayMs } from './delay.js';
 import { DEFAULT_ENRICH_DELAY_MS } from './enrichment.js';
 import { createLibibAdapter } from './libib.js';
 import { DEFAULT_INDEX_DELAY_MS } from './libib-index.js';
+import { takeSnapshotSafely } from './snapshot.js';
 
 type Mode = CatalogueIndexResult['mode'];
 
@@ -45,6 +46,9 @@ try {
       DEFAULT_ENRICH_DELAY_MS,
     ),
     logger: (message: string) => console.error(message),
+    onComplete: () => {
+      takeSnapshotSafely(db, config, { log: (line) => console.error(line) });
+    },
   };
 
   const result =

@@ -6,6 +6,7 @@ import { loadConfig } from './config.js';
 import { parseCsv } from './csv.js';
 import { openDatabase } from './db.js';
 import type { EnrichmentAdapterRegistry } from './enrichment.js';
+import { takeSnapshotSafely } from './snapshot.js';
 
 const USAGE = 'Usage: npm run overrides:import -- <path>';
 const REQUIRED_COLUMNS = ['join_id', 'source', 'source_id_or_url'];
@@ -30,6 +31,7 @@ export interface OverrideImportDeps {
   readFile?: (path: string) => string;
   log?: (line: string) => void;
   error?: (line: string) => void;
+  onImported?: (result: OverrideImportResult) => void;
 }
 
 function parsePath(argv: readonly string[]): string {
@@ -250,7 +252,16 @@ export function runOverrideImportCli(
     error(`Line ${issue.line}: ${issue.message}`);
   }
 
-  return result(issues.length > 0 ? 1 : 0, imported, updated, issues);
+  const outcome = result(
+    issues.length > 0 ? 1 : 0,
+    imported,
+    updated,
+    issues,
+  );
+  if (imported + updated > 0) {
+    deps.onImported?.(outcome);
+  }
+  return outcome;
 }
 
 const isMain =
@@ -266,6 +277,9 @@ if (isMain) {
     const result = runOverrideImportCli(process.argv.slice(2), {
       db,
       adapters,
+      onImported: () => {
+        takeSnapshotSafely(db, config, { log: (line) => console.error(line) });
+      },
     });
     process.exitCode = result.exitCode;
   } finally {
