@@ -367,3 +367,16 @@ Tickets 27, 30, 31, 32 and 34 are implemented. Dependencies were 30 → 31 and 3
 3. **Enrichment source link — ticket 31.** The detail view shows the source name, a link to the matched record and the enriched-at time; unmatched books explain the absence. No report-correction feature; readers contact the Librarian directly.
 4. **Book sweep completion and failures — ticket 32.** Record sweep cycles in the run log, expose the last completed cycle and current progress with an estimate and stalled flag, keep a per-book sweep ledger with reasons, and provide an audit list/CSV that distinguishes unswept zeroes from genuinely empty records.
 5. **Status page — ticket 34.** A public, read-only `/status` page renders current state and run history for Catalogue scan, Enrichment pass, Book sweep, Snapshot, Restore, Export and Override import, lazy-loading 20 rows per section. Linked from the footer; no auth, no writes, no raw stdout.
+
+These entries are the decision record. Exact acceptance criteria and API/schema shapes live in the tickets; durable architectural choices live in the ADRs.
+
+## Pass 5 — Planned
+
+Tickets 35–40. Nothing implemented. Items 37 and 38 need a decision before implementation; the rest are ready.
+
+1. **Back to top button — ticket 35.** A control appears after scrolling and returns smoothly to the top.
+2. **Header links to Libib — ticket 36.** The "Open House Library" label opens `https://www.libib.com/u/openhouselibrary` in a new tab.
+3. **Sweep audit CSV review — ticket 37.** Decide whether the audit is a "no successful sweep" worklist or a failed/skipped list; empty `last_attempt_at`/`outcome`/`reason` currently means never attempted.
+4. **Copy-link button — ticket 38.** Decide whether to remove it or fix it. The clipboard API requires a secure context, so it silently fails over plain HTTP on the LAN/Tailscale address.
+5. **Remove the "Not yet swept" message — ticket 39.** Remove the message from the detail view; the sweep state stays in the API and `/status`.
+6. **Include low-sample ratings by default — ticket 40.** The "Include low sample ratings" checkbox is checked by default.

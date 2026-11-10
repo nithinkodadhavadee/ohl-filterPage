@@ -59,3 +59,20 @@ Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-
 - [x] 34 Status page — public /status with current state and lazy run history
 
 Verification: `typecheck`, `build`, 290 tests green. Unscheduled ideas live in `BACKLOG.md`; they are not tickets and do not enter pass planning.
+
+## Pass 5 — planned (not implemented)
+
+- [ ] 35 Back to top button
+- [ ] 36 Header link to Libib
+- [ ] 37 Review the sweep audit CSV — discussion first
+- [ ] 38 Fix or remove the copy-link button — discussion first; clipboard needs a secure context
+- [ ] 39 Remove the "Not yet swept" message
+- [ ] 40 Include low-sample ratings by default
+
+## Superseded
+
+- [ ] 11 Bootstrap and snapshots — superseded by 20, 21, 22, 23
+
+## Backlog
+
+Unscheduled ideas live in `BACKLOG.md` (matching improvements, fallback sources, deployment).
