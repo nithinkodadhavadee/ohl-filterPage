@@ -228,6 +228,40 @@ describe('GET /api/books', () => {
     expect(last.books).toHaveLength(2);
     expect(last.nextOffset).toBeNull();
   });
+
+  it('pages stably across every sort without duplicates or gaps', async () => {
+    const sorts = [
+      'title',
+      'author',
+      'rating',
+      'holds',
+      'year',
+      'pageCount',
+      'random',
+    ];
+
+    for (const sort of sorts) {
+      const query = `?sort=${sort}&direction=asc&seed=paging-seed`;
+      const all = await listBooks(query);
+      const joinIds: string[] = [];
+      let offset: number | null = 0;
+      let guard = 0;
+
+      while (offset !== null && guard < 10) {
+        const page = await listBooks(`${query}&limit=2&offset=${offset}`);
+        expect(page.total).toBe(all.total);
+        expect(page.nextOffset).not.toBe(offset);
+        joinIds.push(...page.books.map((entry) => entry.joinId));
+        offset = page.nextOffset;
+        guard += 1;
+      }
+
+      expect(offset).toBeNull();
+      expect(joinIds).toEqual(all.books.map((entry) => entry.joinId));
+      expect(new Set(joinIds).size).toBe(joinIds.length);
+      expect(joinIds).toHaveLength(all.total);
+    }
+  });
 });
 
 describe('GET /api/books/:joinId', () => {

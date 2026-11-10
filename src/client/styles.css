@@ -221,6 +221,10 @@ h1 {
   cursor: pointer;
 }
 
+.scroll-sentinel {
+  height: 1px;
+}
+
 .book-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
