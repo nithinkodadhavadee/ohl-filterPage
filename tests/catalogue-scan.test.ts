@@ -120,6 +120,100 @@ describe('scanCatalogue', () => {
     expect(ftsCount()).toBe(2);
   });
 
+  it('persists book records before cover downloads finish', async () => {
+    const now = new Date('2026-11-10T10:00:00.000Z');
+    const index = [
+      item('101', 'Abundance', 'A. Author', 'https://cdn/a.jpg'),
+      item('102', 'Beloved'),
+    ];
+
+    let releaseCover: () => void = () => {};
+    const coverGate = new Promise<void>((resolve) => {
+      releaseCover = resolve;
+    });
+    let coverStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      coverStarted = resolve;
+    });
+
+    const scan = scanCatalogue(db, {
+      ...deps(index, now),
+      cacheCover: async (entry) => {
+        if (entry.joinId === '101') {
+          coverStarted();
+          await coverGate;
+        }
+        return entry.coverUrl ? `cover-${entry.joinId}.jpg` : null;
+      },
+    });
+
+    await started;
+
+    const persisted = books();
+    expect(persisted.map((book) => book.join_id)).toEqual(['101', '102']);
+    expect(persisted.find((book) => book.join_id === '101')?.cover_path).toBeNull();
+    expect(state('sample_join_ids')).toBe(JSON.stringify(['101', '102']));
+    expect(ftsCount()).toBe(2);
+
+    releaseCover();
+    const result = await scan;
+
+    expect(result).toEqual({
+      mode: 'scan',
+      sampleSize: 2,
+      added: 2,
+      updated: 0,
+      removed: 0,
+    });
+    expect(books().find((book) => book.join_id === '101')?.cover_path).toBe(
+      'cover-101.jpg',
+    );
+    expect(books().find((book) => book.join_id === '102')?.cover_path).toBeNull();
+  });
+
+  it('keeps records when cover downloads fail and retries them next scan', async () => {
+    const now = new Date('2026-11-10T10:00:00.000Z');
+    const index = [
+      item('101', 'Abundance', 'A. Author', 'https://cdn/a.jpg'),
+      item('102', 'Beloved', 'A. Author', 'https://cdn/b.jpg'),
+    ];
+    const logs: string[] = [];
+
+    const result = await scanCatalogue(db, {
+      ...deps(index, now),
+      cacheCover: async (entry) => {
+        if (entry.joinId === '101') throw new Error('cover offline');
+        return null;
+      },
+      logger: (message) => logs.push(message),
+    });
+
+    expect(result).toEqual({
+      mode: 'scan',
+      sampleSize: 2,
+      added: 2,
+      updated: 0,
+      removed: 0,
+    });
+    const persisted = books();
+    expect(persisted.map((book) => book.join_id)).toEqual(['101', '102']);
+    expect(persisted.every((book) => book.cover_path === null)).toBe(true);
+    expect(ftsCount()).toBe(2);
+    expect(logs.some((line) => line.includes('101') && line.includes('cover offline'))).toBe(true);
+    expect(logs.some((line) => line.includes('102'))).toBe(true);
+
+    const retryNow = new Date('2026-11-10T11:00:00.000Z');
+    const retried = await scanCatalogue(db, deps(index, retryNow));
+
+    expect(retried).toMatchObject({ added: 0, updated: 2, removed: 0 });
+    expect(books().find((book) => book.join_id === '101')?.cover_path).toBe(
+      'cover-101.jpg',
+    );
+    expect(books().find((book) => book.join_id === '102')?.cover_path).toBe(
+      'cover-102.jpg',
+    );
+  });
+
   it('replaces existing fixture records that are not in the sample', async () => {
     db.prepare(
       'INSERT INTO book_records (join_id, title, first_seen_at) VALUES (?, ?, ?)',
