@@ -9,6 +9,7 @@ import {
   type SortField,
   type UnmatchedFilter,
 } from '../shared/contract';
+import { uniqueCaseInsensitive } from '../shared/authors';
 import { parseOptionalNumber } from './filter-ui';
 import { BOOKS_BATCH_SIZE } from './paging';
 import type { ViewMode } from './types';
@@ -29,22 +30,6 @@ export interface ViewState {
   pagesMax: string;
   unmatched: UnmatchedFilter;
   view: ViewMode;
-}
-
-function uniqueCaseInsensitive(values: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (!trimmed) continue;
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(trimmed);
-  }
-
-  return unique;
 }
 
 export function createSeed(): string {

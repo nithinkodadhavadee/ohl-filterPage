@@ -45,7 +45,7 @@ function insertBook(
 }
 
 describe('GET /api/status enrichment summary', () => {
-  it('exposes counts, last full pass, progress, errors and history', async () => {
+  it('exposes counts, last full pass, progress and errors', async () => {
     const db = openDatabase(loadConfig({ dataDir }));
     insertBook(db, 'visible-enriched', {
       enrichedStatus: 'enriched',
@@ -114,7 +114,7 @@ describe('GET /api/status enrichment summary', () => {
 
     const body = response.json() as {
       enrichment: Record<string, unknown>;
-      runHistory: Array<{ kind: string }>;
+      runHistory?: unknown;
     };
 
     expect(body.enrichment).toMatchObject({
@@ -131,19 +131,8 @@ describe('GET /api/status enrichment summary', () => {
       },
     });
 
-    expect(
-      (body.enrichment.history as Array<{ status: string }>).map(
-        (entry) => entry.status,
-      ),
-    ).toEqual(['running', 'ok', 'failed']);
-
-    expect(body.runHistory.map((entry) => entry.kind)).toEqual([
-      'enrichment_pass',
-      'enrichment_pass',
-      'enrichment_pass',
-      'book_sweep_cycle',
-      'catalogue_scan',
-    ]);
+    expect(body.enrichment).not.toHaveProperty('history');
+    expect(body).not.toHaveProperty('runHistory');
   });
 
   it('exposes a book enriched-at time on the detail output', async () => {

@@ -4,7 +4,11 @@ import type {
   BooksResponse,
   FacetsResponse,
 } from '../shared/contract';
-import type { RunHistoryPage, RunKind } from '../shared/run-log';
+import {
+  RUN_HISTORY_PAGE_SIZE,
+  type RunHistoryPage,
+  type RunKind,
+} from '../shared/run-log';
 import type { StatusResponse } from './types';
 
 export async function fetchBooks(query: BooksQuery = {}): Promise<BooksResponse> {
@@ -67,7 +71,7 @@ export async function fetchRunHistory(
 ): Promise<RunHistoryPage> {
   const params = new URLSearchParams({
     kind,
-    limit: String(options.limit ?? 20),
+    limit: String(options.limit ?? RUN_HISTORY_PAGE_SIZE),
     offset: String(options.offset ?? 0),
   });
   const response = await fetch(`/api/runs?${params.toString()}`);

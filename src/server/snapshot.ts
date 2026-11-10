@@ -153,10 +153,11 @@ export function takeSnapshotSafely(
 export function snapshotOnSuccess(
   db: DatabaseSync,
   config: AppConfig,
+  trigger: RunTrigger = 'automatic',
   log?: (message: string) => void,
 ): () => void {
   return () => {
-    takeSnapshotSafely(db, config, { log });
+    takeSnapshotSafely(db, config, { trigger, log });
   };
 }
 

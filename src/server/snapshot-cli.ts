@@ -4,9 +4,8 @@ import { pathToFileURL } from 'node:url';
 import { loadConfig, type AppConfig } from './config.js';
 import { openDatabase } from './db.js';
 import {
-  finishRun,
+  beginRun,
   recordRun,
-  startRun,
   type RecordRunInput,
 } from './run-log.js';
 import {
@@ -134,12 +133,15 @@ export function runExportCommand(
   }
 
   const clock = deps.now ?? (() => new Date());
-  const runId = startRun(deps.db, {
-    kind: 'export',
-    trigger: 'manual',
-    startedAt: clock(),
-    note: paths.length === 2 ? paths[1] : paths[0],
-  });
+  const run = beginRun(
+    deps.db,
+    {
+      kind: 'export',
+      trigger: 'manual',
+      note: paths.length === 2 ? paths[1] : paths[0],
+    },
+    clock,
+  );
 
   try {
     const source =
@@ -148,19 +150,11 @@ export function runExportCommand(
         : takeSnapshot(deps.db, config, { now: deps.now });
     const destination = paths.length === 2 ? paths[1] : paths[0];
     exportSnapshot(source, destination);
-    finishRun(deps.db, runId, {
-      status: 'ok',
-      note: destination,
-      finishedAt: clock(),
-    });
+    run.finish({ status: 'ok', note: destination });
     log(`Exported snapshot to ${destination}.`);
     return 0;
   } catch (caught) {
-    finishRun(deps.db, runId, {
-      status: 'failed',
-      error: errorMessage(caught),
-      finishedAt: clock(),
-    });
+    run.finish({ status: 'failed', error: errorMessage(caught) });
     error(`Could not export snapshot: ${errorMessage(caught)}`);
     return 1;
   }

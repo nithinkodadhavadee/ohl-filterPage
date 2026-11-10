@@ -5,6 +5,7 @@ import {
   isSortField,
   type Book,
   type BooksQuery,
+  type BookSweepState,
   type BooksResponse,
   type EnrichmentStatus,
   type FacetCount,
@@ -19,7 +20,7 @@ import {
   enrichmentSourceLabel,
   enrichmentSourceUrl,
 } from '../shared/enrichment.js';
-import { getSweepLedger } from './sweep-ledger.js';
+import { getSweepLedger, getSweepLedgers } from './sweep-ledger.js';
 import { VISIBLE_BOOK_SQL } from './visibility.js';
 
 export type {
@@ -185,7 +186,11 @@ function getEnrichmentMap(db: DatabaseSync): Map<string, EnrichmentRow> {
   return map;
 }
 
-function toBook(db: DatabaseSync, record: BookRow): Book {
+function toBook(
+  db: DatabaseSync,
+  record: BookRow,
+  sweepByJoinId?: Map<string, BookSweepState>,
+): Book {
   const enrichment = getEnrichment(db, record.join_id);
   const onShelf = Math.max(0, record.copies - record.out);
 
@@ -211,7 +216,9 @@ function toBook(db: DatabaseSync, record: BookRow): Book {
     enrichmentSourceUrl: enrichmentSourceUrlFor(enrichment),
     enrichedAt: enrichment?.enriched_at ?? null,
     refreshedAt: record.last_refreshed_at,
-    sweep: getSweepLedger(db, record.join_id),
+    sweep: sweepByJoinId
+      ? (sweepByJoinId.get(record.join_id) ?? null)
+      : getSweepLedger(db, record.join_id),
     libibUrl: `${LIBIB_BASE_URL}?solo=${encodeURIComponent(record.join_id)}`,
   };
 }
@@ -632,7 +639,11 @@ export function getBooks(
 
   const total = records.length;
   const page = records.slice(offset, offset + limit);
-  const books = page.map((record) => toBook(db, record));
+  const sweepByJoinId = getSweepLedgers(
+    db,
+    page.map((record) => record.join_id),
+  );
+  const books = page.map((record) => toBook(db, record, sweepByJoinId));
   const consumed = offset + books.length;
 
   return {

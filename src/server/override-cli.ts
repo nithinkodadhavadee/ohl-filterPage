@@ -6,7 +6,7 @@ import { loadConfig } from './config.js';
 import { parseCsv } from './csv.js';
 import { openDatabase } from './db.js';
 import type { EnrichmentAdapterRegistry } from './enrichment.js';
-import { finishRun, startRun, type RunTrigger } from './run-log.js';
+import { beginRun, type RunTrigger } from './run-log.js';
 import { snapshotOnSuccess } from './snapshot.js';
 
 const USAGE = 'Usage: npm run overrides:import -- <path>';
@@ -98,24 +98,21 @@ export function runOverrideImportCli(
   ): OverrideImportResult => ({ exitCode, imported, updated, issues });
 
   const clock = deps.now ?? (() => new Date());
-  const runId = startRun(deps.db, {
-    kind: 'override_import',
-    trigger: deps.trigger ?? 'manual',
-    startedAt: clock(),
-  });
+  const run = beginRun(
+    deps.db,
+    {
+      kind: 'override_import',
+      trigger: deps.trigger ?? 'manual',
+    },
+    clock,
+  );
   const finish = (
     status: 'ok' | 'partial' | 'failed',
     counts: Record<string, number>,
     runError: string | null = null,
     note: string | null = null,
   ): void => {
-    finishRun(deps.db, runId, {
-      status,
-      counts,
-      error: runError,
-      note,
-      finishedAt: clock(),
-    });
+    run.finish({ status, counts, error: runError, note });
   };
 
   let filePath: string;
@@ -329,7 +326,9 @@ if (isMain) {
     const result = runOverrideImportCli(process.argv.slice(2), {
       db,
       adapters,
-      onImported: snapshotOnSuccess(db, config, (line) => console.error(line)),
+      onImported: snapshotOnSuccess(db, config, 'manual', (line) =>
+        console.error(line),
+      ),
     });
     process.exitCode = result.exitCode;
   } finally {

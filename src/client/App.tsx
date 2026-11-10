@@ -31,7 +31,9 @@ import {
   subjectFacetSummary,
   writeStoredBoolean,
 } from './filter-ui';
+import { formatDateTime } from './format';
 import { appendCataloguePage } from './paging';
+import { describeSweep } from './sweep-state';
 import type { CrawlerStatus, ViewMode } from './types';
 import {
   activeFilterCount,
@@ -43,16 +45,6 @@ import {
   viewToUrl,
   type ViewState,
 } from './view-state';
-
-function formatDate(value: string | null): string {
-  if (!value) return 'unknown';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
 
 function initialOf(title: string): string {
   return title.trim().charAt(0).toUpperCase() || '?';
@@ -247,7 +239,7 @@ function BookEnrichment({ book }: { book: Book }) {
             </div>
             <div>
               <dt>Enriched</dt>
-              <dd>{formatDate(book.enrichedAt)}</dd>
+              <dd>{formatDateTime(book.enrichedAt, 'unknown')}</dd>
             </div>
           </dl>
           {book.enrichmentSourceUrl ? (
@@ -323,6 +315,7 @@ export function BookDetail({
   permalink: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const sweep = describeSweep(book.sweep);
 
   const copyLink = async () => {
     if (!navigator.clipboard) return;
@@ -367,6 +360,11 @@ export function BookDetail({
               <dd>{book.onShelf}</dd>
             </div>
           </dl>
+          <p className="muted detail-sweep">
+            {sweep.hasSuccessfulSweep
+              ? `Last successful sweep ${formatDateTime(sweep.lastSuccessAt, 'unknown')}.`
+              : 'Not yet swept — Copies, Out and Holds are still the zero defaults.'}
+          </p>
         </section>
 
         <section className="detail-section" aria-labelledby="detail-publication">
@@ -457,7 +455,7 @@ export function BookDetail({
 
         <footer className="detail-footer">
           <p className="muted">
-            This record refreshed {formatDate(book.refreshedAt)}
+            This record refreshed {formatDateTime(book.refreshedAt, 'unknown')}
           </p>
           <div className="detail-actions">
             <button type="button" className="copy-link" onClick={copyLink}>
@@ -510,64 +508,75 @@ function BookTable({
           <th scope="col">Subjects</th>
           <th scope="col">Pages</th>
           <th scope="col">Copies / Out</th>
+          <th scope="col">Swept</th>
         </tr>
       </thead>
       <tbody>
-        {books.map((book) => (
-          <tr key={book.joinId}>
-            <td className="cell-title">
-              <button
-                type="button"
-                className="table-title-button"
-                onClick={() => onSelect(book)}
-                aria-label={`${book.title}${book.author ? ` by ${book.author}` : ''}`}
-              >
-                <span className="table-cover">
-                  <Cover book={book} />
+        {books.map((book) => {
+          const sweep = describeSweep(book.sweep);
+          return (
+            <tr key={book.joinId}>
+              <td className="cell-title">
+                <button
+                  type="button"
+                  className="table-title-button"
+                  onClick={() => onSelect(book)}
+                  aria-label={`${book.title}${book.author ? ` by ${book.author}` : ''}`}
+                >
+                  <span className="table-cover">
+                    <Cover book={book} />
+                  </span>
+                  <span className="table-title-text">{book.title}</span>
+                </button>
+              </td>
+              <td data-label="Author">{book.author || 'Author unknown'}</td>
+              <td data-label="Rating">
+                <span className="badge-group">
+                  <RatingBadge book={book} precision={2} emptyLabel="—" />
+                  {book.rating?.lowSample ? (
+                    <Badge book={book} kind="low-sample" />
+                  ) : null}
                 </span>
-                <span className="table-title-text">{book.title}</span>
-              </button>
-            </td>
-            <td data-label="Author">{book.author || 'Author unknown'}</td>
-            <td data-label="Rating">
-              <span className="badge-group">
-                <RatingBadge book={book} precision={2} emptyLabel="—" />
-                {book.rating?.lowSample ? (
-                  <Badge book={book} kind="low-sample" />
-                ) : null}
-              </span>
-            </td>
-            <td data-label="Holds">{book.holds}</td>
-            <td data-label="Availability">
-              <span className="badge-group">
-                <Badge
-                  book={book}
-                  kind={book.available ? 'available' : 'unavailable'}
-                />
-                {hasNoEnrichmentData(book.enrichmentStatus) ? (
-                  <Badge book={book} kind="unmatched" />
-                ) : null}
-              </span>
-            </td>
-            <td data-label="Subjects">
-              {book.subjects.length > 0 ? (
-                book.subjects.join(', ')
-              ) : (
-                <span className="muted">—</span>
-              )}
-            </td>
-            <td data-label="Pages">
-              {book.pageCount !== null ? (
-                book.pageCount
-              ) : (
-                <span className="muted">—</span>
-              )}
-            </td>
-            <td data-label="Copies / Out">
-              {book.copies} / {book.out}
-            </td>
-          </tr>
-        ))}
+              </td>
+              <td data-label="Holds">{book.holds}</td>
+              <td data-label="Availability">
+                <span className="badge-group">
+                  <Badge
+                    book={book}
+                    kind={book.available ? 'available' : 'unavailable'}
+                  />
+                  {hasNoEnrichmentData(book.enrichmentStatus) ? (
+                    <Badge book={book} kind="unmatched" />
+                  ) : null}
+                </span>
+              </td>
+              <td data-label="Subjects">
+                {book.subjects.length > 0 ? (
+                  book.subjects.join(', ')
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </td>
+              <td data-label="Pages">
+                {book.pageCount !== null ? (
+                  book.pageCount
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </td>
+              <td data-label="Copies / Out">
+                {book.copies} / {book.out}
+              </td>
+              <td data-label="Swept">
+                {sweep.hasSuccessfulSweep ? (
+                  formatDateTime(sweep.lastSuccessAt)
+                ) : (
+                  <span className="muted">Not yet swept</span>
+                )}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -1077,7 +1086,10 @@ export function App() {
           <p className="refresh-note">
             Catalogue refreshed{' '}
             <strong>
-              {formatDate(catalogue?.meta.lastIndexRefreshedAt ?? null)}
+              {formatDateTime(
+                catalogue?.meta.lastIndexRefreshedAt ?? null,
+                'unknown',
+              )}
             </strong>
           </p>
           <p

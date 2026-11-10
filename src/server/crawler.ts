@@ -11,6 +11,7 @@ import {
 } from './enrichment.js';
 import type { LibibDetail } from './libib-detail.js';
 import {
+  durationBetween,
   finishRun,
   findLatestRun,
   readRuns,
@@ -205,6 +206,29 @@ function cycleCounts(
   return { position, total, refreshed, skipped, failed };
 }
 
+function createSweepCycleRun(
+  db: DatabaseSync,
+  startedAt: string,
+): number {
+  const runId = startRun(db, {
+    kind: 'book_sweep_cycle',
+    trigger: 'automatic',
+    note: 'cycle',
+    startedAt,
+  });
+  writeValue(db, CYCLE_RUN_ID_KEY, String(runId));
+  return runId;
+}
+
+function markProgressStart(
+  db: DatabaseSync,
+  startedAt: string,
+): void {
+  if (readValue(db, LAST_PROGRESS_KEY) === null) {
+    writeValue(db, LAST_PROGRESS_KEY, startedAt);
+  }
+}
+
 function startSweepCycle(
   db: DatabaseSync,
   startedAt: string,
@@ -217,15 +241,7 @@ function startSweepCycle(
   writeValue(db, CYCLE_SKIPPED_KEY, '0');
   writeValue(db, CYCLE_FAILED_KEY, '0');
   writeValue(db, CYCLE_LAST_ERROR_KEY, null);
-
-  const runId = startRun(db, {
-    kind: 'book_sweep_cycle',
-    trigger: 'automatic',
-    note: 'cycle',
-    startedAt,
-  });
-  writeValue(db, CYCLE_RUN_ID_KEY, String(runId));
-  return runId;
+  return createSweepCycleRun(db, startedAt);
 }
 
 function ensureSweepCycleRun(
@@ -236,24 +252,8 @@ function ensureSweepCycleRun(
     readValue(db, CYCLE_RUN_ID_KEY),
     0,
   );
-  if (existing > 0) {
-    if (readValue(db, LAST_PROGRESS_KEY) === null) {
-      writeValue(db, LAST_PROGRESS_KEY, startedAt);
-    }
-    return existing;
-  }
-
-  const runId = startRun(db, {
-    kind: 'book_sweep_cycle',
-    trigger: 'automatic',
-    note: 'cycle',
-    startedAt,
-  });
-  writeValue(db, CYCLE_RUN_ID_KEY, String(runId));
-  if (readValue(db, LAST_PROGRESS_KEY) === null) {
-    writeValue(db, LAST_PROGRESS_KEY, startedAt);
-  }
-  return runId;
+  markProgressStart(db, startedAt);
+  return existing > 0 ? existing : createSweepCycleRun(db, startedAt);
 }
 
 export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
@@ -470,17 +470,6 @@ function isSweepStalled(
   return nowMs - markerMs > thresholdMs;
 }
 
-function durationBetween(
-  startedAt: string | null,
-  finishedAt: string | null,
-): number | null {
-  if (startedAt === null || finishedAt === null) return null;
-  const started = Date.parse(startedAt);
-  const finished = Date.parse(finishedAt);
-  if (!Number.isFinite(started) || !Number.isFinite(finished)) return null;
-  return Math.max(0, finished - started);
-}
-
 export function getCrawlerStatus(
   db: DatabaseSync,
   options: {
@@ -532,10 +521,14 @@ export function getCrawlerStatus(
       : {
           startedAt: state.lastCycleStartedAt,
           finishedAt: state.lastCycleFinishedAt,
-          duration: durationBetween(
-            state.lastCycleStartedAt,
-            state.lastCycleFinishedAt,
-          ),
+          duration:
+            state.lastCycleStartedAt !== null &&
+            state.lastCycleFinishedAt !== null
+              ? durationBetween(
+                  state.lastCycleStartedAt,
+                  state.lastCycleFinishedAt,
+                )
+              : null,
           counts: null,
           lastError: null,
         },

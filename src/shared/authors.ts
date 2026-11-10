@@ -1,3 +1,5 @@
+import type { FacetCount } from './contract.js';
+
 export const AUTHOR_NAME_SEPARATORS = ['&', ','] as const;
 
 const SEPARATOR_PATTERN = new RegExp(
@@ -10,31 +12,31 @@ export function normalizeAuthorName(name: string): string {
   return name.trim().toLowerCase();
 }
 
+export function uniqueCaseInsensitive(
+  values: readonly string[],
+): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+
+    const key = normalizeAuthorName(trimmed);
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    unique.push(trimmed);
+  }
+
+  return unique;
+}
+
 export function splitAuthorNames(
   value: string | null | undefined,
 ): string[] {
   if (!value) return [];
-
-  const names: string[] = [];
-  const seen = new Set<string>();
-
-  for (const part of value.split(SEPARATOR_PATTERN)) {
-    const name = part.trim();
-    if (!name) continue;
-
-    const key = normalizeAuthorName(name);
-    if (seen.has(key)) continue;
-
-    seen.add(key);
-    names.push(name);
-  }
-
-  return names;
-}
-
-export interface AuthorFacetCount {
-  value: string;
-  count: number;
+  return uniqueCaseInsensitive(value.split(SEPARATOR_PATTERN));
 }
 
 interface AuthorGroup {
@@ -62,7 +64,7 @@ function mostCommonSpelling(spellings: Map<string, number>): string {
 
 export function buildAuthorFacets(
   records: Iterable<{ joinId: string; author: string | null }>,
-): AuthorFacetCount[] {
+): FacetCount[] {
   const groups = new Map<string, AuthorGroup>();
 
   for (const record of records) {

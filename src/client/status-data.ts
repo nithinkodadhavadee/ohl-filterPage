@@ -6,29 +6,36 @@ import type {
   RunStatus,
 } from '../shared/run-log';
 
-export const RUN_HISTORY_PAGE_SIZE = 20;
+export { RUN_HISTORY_PAGE_SIZE } from '../shared/run-log';
+
+export type StatusSectionPanel = 'enrichment' | 'sweep';
 
 export interface StatusSection {
   kind: RunKind;
   label: string;
   description: string;
+  panel?: StatusSectionPanel;
 }
 
 export const STATUS_SECTIONS: readonly StatusSection[] = [
   {
     kind: 'catalogue_scan',
     label: 'Catalogue scan',
-    description: 'Libib index refresh and sample selection.',
+    description:
+      'Reads the Libib Catalogue index, adding, updating and hiding book records.',
   },
   {
     kind: 'enrichment_pass',
     label: 'Enrichment pass',
     description: 'Ratings, page counts and subjects from enrichment sources.',
+    panel: 'enrichment',
   },
   {
     kind: 'book_sweep_cycle',
     label: 'Book sweep',
-    description: 'Rolling per-book detail refresh.',
+    description:
+      'Rolling refresh of each book record’s circulation and library metadata.',
+    panel: 'sweep',
   },
   {
     kind: 'snapshot',

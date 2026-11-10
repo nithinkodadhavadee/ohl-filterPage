@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EnrichmentStatusSummary } from '../shared/contract';
 import type {
-  RunHistoryPage,
   RunKind,
   RunLogEntry,
   RunStatus,
 } from '../shared/run-log';
 import { fetchRunHistory, fetchStatus } from './api';
+import { formatDateTime } from './format';
 import {
   RUN_HISTORY_PAGE_SIZE,
   STATUS_SECTIONS,
@@ -16,18 +16,9 @@ import {
   formatRunDuration,
   formatRunStatus,
   latestRun,
+  type StatusSection,
 } from './status-data';
 import type { CrawlerStatus, StatusResponse } from './types';
-
-function formatDateTime(value: string | null): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
 
 function RunStatusBadge({ status }: { status: RunStatus }) {
   return (
@@ -125,54 +116,35 @@ function RunHistory({ kind }: { kind: RunKind }) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestRef = useRef(0);
 
   const loadFirstPage = useCallback(async () => {
+    const request = requestRef.current + 1;
+    requestRef.current = request;
     setLoading(true);
     setError(null);
     try {
       const page = await fetchRunHistory(kind, {
         limit: RUN_HISTORY_PAGE_SIZE,
       });
+      if (requestRef.current !== request) return;
       setRuns(page.runs);
       setNextOffset(page.nextOffset);
     } catch (loadError) {
+      if (requestRef.current !== request) return;
       setError(
         loadError instanceof Error
           ? loadError.message
           : 'Could not load run history',
       );
     } finally {
-      setLoading(false);
+      if (requestRef.current === request) setLoading(false);
     }
   }, [kind]);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    fetchRunHistory(kind, { limit: RUN_HISTORY_PAGE_SIZE })
-      .then((page: RunHistoryPage) => {
-        if (cancelled) return;
-        setRuns(page.runs);
-        setNextOffset(page.nextOffset);
-      })
-      .catch((loadError: unknown) => {
-        if (cancelled) return;
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : 'Could not load run history',
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [kind]);
+    void loadFirstPage();
+  }, [loadFirstPage]);
 
   const loadMore = async () => {
     if (nextOffset === null || loadingMore) return;
@@ -372,6 +344,23 @@ function SweepPanel({ status }: { status: CrawlerStatus }) {
   );
 }
 
+function SectionPanel({
+  section,
+  status,
+}: {
+  section: StatusSection;
+  status: StatusResponse;
+}) {
+  switch (section.panel) {
+    case 'enrichment':
+      return <EnrichmentPanel enrichment={status.enrichment} />;
+    case 'sweep':
+      return <SweepPanel status={status} />;
+    default:
+      return null;
+  }
+}
+
 export function StatusPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -432,11 +421,7 @@ export function StatusPage() {
             </div>
 
             {status ? (
-              section.kind === 'enrichment_pass' ? (
-                <EnrichmentPanel enrichment={status.enrichment} />
-              ) : section.kind === 'book_sweep_cycle' ? (
-                <SweepPanel status={status} />
-              ) : null
+              <SectionPanel section={section} status={status} />
             ) : null}
 
             <RunHistory kind={section.kind} />
