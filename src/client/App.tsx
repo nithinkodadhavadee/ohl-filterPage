@@ -11,6 +11,7 @@ import {
   isSortField,
   normalizeUnmatchedFilter,
   type Book,
+  type BooksQuery,
   type BooksResponse,
   type FacetsResponse,
   type HoldBucket,
@@ -35,6 +36,7 @@ import {
   subjectFacetSummary,
   writeStoredBoolean,
 } from './filter-ui';
+import { BOOKS_BATCH_SIZE, appendCataloguePage } from './paging';
 import type { CrawlerStatus, ViewMode } from './types';
 
 function formatDate(value: string | null): string {
@@ -636,6 +638,46 @@ function viewToUrl(view: ViewState): string {
     : window.location.pathname;
 }
 
+function viewQueryKey(view: ViewState): string {
+  return JSON.stringify([
+    view.q,
+    view.sort,
+    view.direction,
+    view.sort === 'random' ? view.seed : null,
+    view.author.trim(),
+    view.tags,
+    view.subjects,
+    view.holds,
+    view.availableOnly,
+    view.ratingMin.trim(),
+    view.includeLowSample,
+    view.pagesMin.trim(),
+    view.pagesMax.trim(),
+    view.unmatched,
+  ]);
+}
+
+function booksQueryForView(view: ViewState, offset: number): BooksQuery {
+  return {
+    q: view.q || undefined,
+    sort: view.sort,
+    direction: view.direction,
+    seed: view.sort === 'random' ? view.seed ?? undefined : undefined,
+    author: view.author.trim() || undefined,
+    tags: view.tags,
+    subjects: view.subjects,
+    holds: view.holds,
+    availableOnly: view.availableOnly,
+    ratingMin: parseOptionalNumber(view.ratingMin),
+    includeLowSample: view.includeLowSample,
+    pagesMin: parseOptionalNumber(view.pagesMin),
+    pagesMax: parseOptionalNumber(view.pagesMax),
+    unmatched: view.unmatched,
+    limit: BOOKS_BATCH_SIZE,
+    offset,
+  };
+}
+
 function bookPermalink(view: ViewState, joinId: string): string {
   const url = new URL(viewToUrl(view), window.location.href);
   url.searchParams.set('book', joinId);
@@ -675,6 +717,8 @@ export function App() {
   const [facets, setFacets] = useState<FacetsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Book | null>(null);
   const [filtersOpen, toggleFilters] = useStoredToggle(
     FILTER_PANEL_STORAGE_KEY,
@@ -686,6 +730,12 @@ export function App() {
   );
   const [reloadToken, setReloadToken] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const nextOffsetRef = useRef<number | null>(null);
+  const nextOffsetQueryKeyRef = useRef<string | null>(null);
+  const loadingMoreRef = useRef(false);
+  const requestVersionRef = useRef(0);
+  const queryKey = viewQueryKey(view);
 
   const updateView = useCallback(
     (next: ViewState, options: { push?: boolean } = {}) => {
@@ -780,47 +830,86 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const version = requestVersionRef.current + 1;
+    requestVersionRef.current = version;
+    nextOffsetRef.current = null;
+    nextOffsetQueryKeyRef.current = null;
+    loadingMoreRef.current = false;
     setLoading(true);
+    setLoadingMore(false);
+    setLoadMoreError(null);
     setError(null);
 
-    fetchBooks({
-      q: view.q || undefined,
-      sort: view.sort,
-      direction: view.direction,
-      seed: view.sort === 'random' ? view.seed ?? undefined : undefined,
-      author: view.author.trim() || undefined,
-      tags: view.tags,
-      subjects: view.subjects,
-      holds: view.holds,
-      availableOnly: view.availableOnly,
-      ratingMin: parseOptionalNumber(view.ratingMin),
-      includeLowSample: view.includeLowSample,
-      pagesMin: parseOptionalNumber(view.pagesMin),
-      pagesMax: parseOptionalNumber(view.pagesMax),
-      unmatched: view.unmatched,
-      limit: 200,
-      offset: 0,
-    })
+    fetchBooks(booksQueryForView(view, 0))
       .then((data) => {
-        if (!cancelled) setCatalogue(data);
+        if (cancelled || requestVersionRef.current !== version) return;
+        nextOffsetRef.current = data.nextOffset;
+        nextOffsetQueryKeyRef.current = queryKey;
+        setCatalogue(data);
       })
       .catch((caught) => {
-        if (!cancelled) {
-          setError(
-            caught instanceof Error
-              ? caught.message
-              : 'Could not load the catalogue',
-          );
-        }
+        if (cancelled || requestVersionRef.current !== version) return;
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : 'Could not load the catalogue',
+        );
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (cancelled || requestVersionRef.current !== version) return;
+        setLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [view, reloadToken]);
+  }, [queryKey, reloadToken]);
+
+  const loadMore = useCallback(() => {
+    if (loading || loadingMoreRef.current) return;
+    if (nextOffsetQueryKeyRef.current !== queryKey) return;
+    const offset = nextOffsetRef.current;
+    if (offset === null) return;
+
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    const version = requestVersionRef.current;
+
+    fetchBooks(booksQueryForView(view, offset))
+      .then((page) => {
+        if (requestVersionRef.current !== version) return;
+        nextOffsetRef.current = page.nextOffset;
+        setCatalogue((current) => appendCataloguePage(current, page));
+      })
+      .catch((caught) => {
+        if (requestVersionRef.current !== version) return;
+        setLoadMoreError(
+          caught instanceof Error
+            ? caught.message
+            : 'Could not load more books',
+        );
+      })
+      .finally(() => {
+        if (requestVersionRef.current !== version) return;
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      });
+  }, [loading, queryKey, view]);
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { rootMargin: '600px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -1370,6 +1459,19 @@ export function App() {
                 ))}
               </ul>
             )}
+            <div ref={sentinelRef} className="scroll-sentinel" aria-hidden="true" />
+            {loadMoreError ? (
+              <div className="status status-error" role="alert">
+                <p>{loadMoreError}</p>
+                <button type="button" onClick={loadMore}>
+                  Try again
+                </button>
+              </div>
+            ) : loadingMore ? (
+              <p className="status" role="status">
+                Loading more books…
+              </p>
+            ) : null}
           </>
         )}
       </main>
