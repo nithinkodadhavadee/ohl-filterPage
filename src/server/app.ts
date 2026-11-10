@@ -25,6 +25,13 @@ import { runEnrichCli } from './enrich-cli.js';
 import { createLibibAdapter } from './libib.js';
 import { DEFAULT_INDEX_DELAY_MS } from './libib-index.js';
 import {
+  startScheduledScan,
+  type ScheduledScanHandle,
+  type ScheduledSleep,
+} from './scheduled-scan.js';
+import { takeSnapshotSafely } from './snapshot.js';
+import {
+  recordFullEnrichment,
   startStartup,
   type StartupDeps,
   type StartupHandle,
@@ -45,6 +52,16 @@ export interface StartupOverrides {
   startSweep?: StartupDeps['startSweep'];
 }
 
+export interface ScheduledScanOverrides {
+  now?: () => Date;
+  sleep?: ScheduledSleep;
+  maxAttempts?: number;
+  retryBaseMs?: number;
+  retryMaxMs?: number;
+  jitterRatio?: number;
+  random?: () => number;
+}
+
 export interface BuildAppOptions {
   dataDir?: string;
   port?: number;
@@ -53,6 +70,7 @@ export interface BuildAppOptions {
   crawler?: boolean;
   startup?: boolean;
   startupDeps?: StartupOverrides;
+  scheduledDeps?: ScheduledScanOverrides;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -115,6 +133,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const crawlerEnabled = options.crawler ?? false;
   const startupEnabled = options.startup ?? crawlerEnabled;
   let startup: StartupHandle | null = null;
+  let scheduled: ScheduledScanHandle | null = null;
 
   const clientDir = path.resolve(process.cwd(), 'dist/client');
   if (options.serveStatic && existsSync(clientDir)) {
@@ -128,6 +147,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   app.addHook('onClose', async () => {
+    await scheduled?.stop();
     await startup?.stop();
     db.close();
   });
@@ -138,6 +158,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     getCrawlerStatus(db, {
       enabled: crawlerEnabled,
       startup: startup?.status(),
+      scheduled: scheduled?.status(),
     }),
   );
 
@@ -227,7 +248,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       DEFAULT_ENRICH_DELAY_MS,
     );
 
-    const scan =
+    const runScan =
       options.startupDeps?.scan ??
       (() =>
         refreshCatalogueIndex(db, {
@@ -238,7 +259,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           logger,
         } satisfies CatalogueIndexDeps));
 
-    const enrich =
+    const runEnrich =
       options.startupDeps?.enrich ??
       ((context) =>
         runEnrichCli(['--all'], {
@@ -248,6 +269,24 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           signal: context.signal,
           error: logger ?? ((line: string) => console.error(line)),
         }));
+
+    const snapshot = (): void => {
+      takeSnapshotSafely(db, config, { log: logger });
+    };
+
+    const scan = async (): Promise<unknown> => {
+      const result = await runScan();
+      snapshot();
+      return result;
+    };
+
+    const enrich = async (
+      context: StartupTaskContext,
+    ): Promise<unknown> => {
+      const result = await runEnrich(context);
+      snapshot();
+      return result;
+    };
 
     const startSweep =
       options.startupDeps?.startSweep ??
@@ -268,6 +307,21 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       startSweep,
       cooldownMs: config.enrichmentCooldownMs,
       logger,
+    });
+
+    scheduled = startScheduledScan({
+      scan,
+      enrich,
+      intervalMs: config.catalogueScanIntervalMs,
+      now: options.scheduledDeps?.now,
+      sleep: options.scheduledDeps?.sleep,
+      maxAttempts: options.scheduledDeps?.maxAttempts,
+      retryBaseMs: options.scheduledDeps?.retryBaseMs,
+      retryMaxMs: options.scheduledDeps?.retryMaxMs,
+      jitterRatio: options.scheduledDeps?.jitterRatio,
+      random: options.scheduledDeps?.random,
+      logger,
+      onEnrichmentComplete: (at) => recordFullEnrichment(db, at),
     });
   }
 
