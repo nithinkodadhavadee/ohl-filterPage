@@ -358,8 +358,10 @@ Canonical CLI: `catalogue:scan`, `catalogue:resample`, `sweep` (`--book`, `--del
 
 ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots). ADR-0005 and ADR-0006 are superseded.
 
-## Later Backlog
+## Next Pass (candidates)
 
-Recorded after Pass 3; not scheduled.
+Collected while testing the deployed container; not scheduled. More will be added after the site is shared for testing.
 
 1. **Filter by multiple authors.** The author filter is a single text box (a case-insensitive substring over one author string). It should become a multi-select author picker, showing books by any selected author (OR), with counts and URL state. Open question: Libib stores one author string per book record, sometimes containing several names ("Peter H. Diamandis, Steven Kotler"), so the picker must either list whole strings or split them into individuals; splitting risks "Last, First" formats and names containing commas. Ticket 27.
+2. **Enrichment status and last pass.** The Librarian cannot tell whether an Enrichment pass is finished or how many books are unmatched without inspecting the database. Expose the last completed pass time, counts by status, in-progress state, next scheduled refresh and last error, in the API and a compact status area. Ticket 30.
+3. **Enrichment source link and corrections.** Each matched book should link to its enrichment record (for example the Open Library work) and show when it was enriched, so readers can verify the match and report a correction. Unmatched books should explain the absence and offer the same reporting route. Ticket 31.

@@ -50,6 +50,8 @@ Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-
 
 - [ ] 11 First run and snapshots — superseded by 20, 21, 22, 23
 
-## Later (needs-triage)
+## Next pass (candidates, needs-triage)
 
 - [ ] 27 Filter by multiple authors — multi-select author picker, OR semantics; author-string vs individual-name question open
+- [ ] 30 Enrichment status and last pass — counts, last pass time, in-progress, next run, last error
+- [ ] 31 Enrichment source link and corrections — link each matched book to its source record and offer a correction report
