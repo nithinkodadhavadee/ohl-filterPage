@@ -4,7 +4,7 @@
 
 **Blocked by:** 21, 22, 23
 
-**Status:** ready-for-agent
+**Status:** done (pass 3)
 
 - [ ] Scripts are `catalogue:scan`, `catalogue:resample`, `sweep` (with `--book` and `--delay`), `enrich` (`--all`, `--unmatched`, `--failed`, `--id`), `snapshot`, `restore`, `export`, `overrides:import`, `export:unmatched`, `seed`, plus `dev`, `build`, `start`, `test`, `typecheck`.
 - [ ] Old script names are removed or documented as aliases.

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 3)
 
 - [ ] `SAMPLE_SIZE` unset or 0 stores the whole visible Collection; 50 caps the local development Sample.
 - [ ] A Catalogue scan decides presence from the full Libib index and marks only records absent from Libib as Hidden; hidden records are absent from `/api/books`, `/api/facets` and their counts.

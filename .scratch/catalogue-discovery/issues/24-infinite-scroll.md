@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 3)
 
 - [ ] The first batch is 24 book records; the next batch loads as the Patron approaches the bottom, with no duplicates or skipped records.
 - [ ] It works with the full 540-record Collection, not just the 50-book sample.

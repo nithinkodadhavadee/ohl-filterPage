@@ -4,7 +4,7 @@
 
 **Blocked by:** 20
 
-**Status:** ready-for-agent
+**Status:** done (pass 3)
 
 - [ ] Empty database: Catalogue scan, then Enrichment pass and Book sweep in parallel; no special 2-second start.
 - [ ] Populated database: a Catalogue scan runs on every start, and data is served while the scan, Enrichment pass and Book sweep run.

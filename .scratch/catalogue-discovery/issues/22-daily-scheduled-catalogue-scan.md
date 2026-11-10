@@ -4,7 +4,7 @@
 
 **Blocked by:** 21
 
-**Status:** ready-for-agent
+**Status:** done (pass 3)
 
 - [ ] The interval defaults to 24 hours, is environment-configurable, and 0 disables the scheduled scan.
 - [ ] A successful Scheduled catalogue scan triggers a full Enrichment pass.

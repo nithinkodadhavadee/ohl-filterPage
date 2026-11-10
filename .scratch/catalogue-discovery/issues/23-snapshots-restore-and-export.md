@@ -4,7 +4,7 @@
 
 **Blocked by:** 20
 
-**Status:** ready-for-agent
+**Status:** done (pass 3)
 
 - [ ] `snapshot` writes a consistent timestamped copy under `DATA_DIR/snapshots` and prunes to the configured retain count (default 10).
 - [ ] Automatic snapshots fire at the four trigger points and never on every Book sweep cycle.

@@ -1,6 +1,6 @@
 # Catalogue Discovery — Status
 
-Branches (local; no remote, no PR): `feat/catalogue-discovery-v1`, then `feat/catalogue-discovery-pass2`. Pass 3 is planned, not yet implemented.
+Branches (local; no remote, no PR): `feat/catalogue-discovery-v1`, `feat/catalogue-discovery-pass2`, `feat/catalogue-discovery-pass3`.
 
 ## v1 prototype — implemented and verified
 
@@ -30,15 +30,17 @@ Verification: `typecheck`, `build`, 148 tests green; live run with 50 book recor
 
 Verification: `typecheck`, `build`, 173 tests green; live API check of `?solo=`, `enrichmentSource` and the tri-state unmatched filter.
 
-## Pass 3 — decided, awaiting review (not implemented)
+## Pass 3 — implemented
 
-- [ ] 20 Configurable Crawl set and Hidden books — `ready-for-agent` (no blockers)
-- [ ] 21 Startup catch-up and First run — `ready-for-agent` (blocked by 20)
-- [ ] 22 Daily Scheduled catalogue scan — `ready-for-agent` (blocked by 21)
-- [ ] 23 Snapshots, Restore and Export — `ready-for-agent` (blocked by 20)
-- [ ] 24 Infinite scroll — `ready-for-agent` (no blockers)
-- [x] 25 Containerisation and deployment — implemented on `p3/25`; Docker build and live healthcheck not verified (Docker unavailable)
-- [ ] 26 Canonical CLI and operations documentation — `ready-for-agent` (blocked by 21, 22, 23)
+- [x] 20 Configurable Crawl set and Hidden books
+- [x] 21 Startup catch-up and First run
+- [x] 22 Daily Scheduled catalogue scan
+- [x] 23 Snapshots, Restore and Export
+- [x] 24 Infinite scroll
+- [x] 25 Containerisation and deployment — static verification only; Docker build and live healthcheck not run (Docker unavailable)
+- [x] 26 Canonical CLI and operations documentation
+
+Verification: `typecheck`, `build`, 231 tests green. Deployment files statically validated; the first real `docker compose up` and Cloudflare Tunnel test happen on the Nix server.
 
 Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots). ADR-0005 and ADR-0006 are superseded.
 
@@ -49,4 +51,3 @@ Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-
 ## Later (needs-triage)
 
 - [ ] 27 Filter by multiple authors — multi-select author picker, OR semantics; author-string vs individual-name question open
-
