@@ -16,8 +16,9 @@ import { takeSnapshotSafely } from './snapshot.js';
 type Mode = CatalogueIndexResult['mode'];
 
 function parseMode(value: string | undefined): Mode {
-  if (value === 'index' || value === 'resample') return value;
-  throw new Error('Usage: index-cli <index|resample>');
+  if (value === 'scan' || value === 'index') return 'index';
+  if (value === 'resample') return 'resample';
+  throw new Error('Usage: catalogue-cli <scan|resample>');
 }
 
 const mode = parseMode(process.argv[2]);
@@ -57,14 +58,14 @@ try {
       : await refreshCatalogueIndex(db, deps);
 
   console.log(
-    `${mode === 'resample' ? 'Resampled' : 'Refreshed'} catalogue index: ` +
-      `${result.sampleSize} sampled book records ` +
+    `${mode === 'resample' ? 'Resampled' : 'Scanned'} catalogue: ` +
+      `${result.sampleSize} book record(s) in the Crawl set ` +
       `(${result.added} added, ${result.updated} updated, ${result.removed} removed).`,
   );
 } catch (error) {
   const detail = error instanceof Error ? error.message : String(error);
   console.error(
-    `Could not ${mode === 'resample' ? 'resample' : 'refresh'} the catalogue index: ${detail}`,
+    `Could not ${mode === 'resample' ? 'resample' : 'scan'} the catalogue: ${detail}`,
   );
   process.exitCode = 1;
 } finally {

@@ -6,6 +6,7 @@ export interface BookRefreshDeps {
   now?: () => Date;
   delayMs?: number;
   sleep?: (milliseconds: number) => Promise<void>;
+  joinIds?: readonly string[];
 }
 
 export interface BookRefreshResult {
@@ -121,7 +122,7 @@ export async function refreshBookDetails(
   db: DatabaseSync,
   deps: BookRefreshDeps,
 ): Promise<BookRefreshResult> {
-  const sampleIds = getSampleJoinIds(db);
+  const sampleIds = deps.joinIds ?? getSampleJoinIds(db);
   if (sampleIds === null || sampleIds.length === 0) {
     return { sampleSize: 0, refreshed: 0, skipped: 0 };
   }
