@@ -15,7 +15,10 @@ import {
   type SortField,
 } from '../shared/contract.js';
 import { buildAuthorFacets } from '../shared/authors.js';
-import { enrichmentSourceLabel } from '../shared/enrichment.js';
+import {
+  enrichmentSourceLabel,
+  enrichmentSourceUrl,
+} from '../shared/enrichment.js';
 import { VISIBLE_BOOK_SQL } from './visibility.js';
 
 export type {
@@ -122,6 +125,13 @@ function enrichmentSourceFor(
   return enrichmentSourceLabel(enrichment?.source);
 }
 
+function enrichmentSourceUrlFor(
+  enrichment: EnrichmentRow | undefined,
+): string | null {
+  if (enrichmentStatusFor(enrichment) !== 'enriched') return null;
+  return enrichmentSourceUrl(enrichment?.source, enrichment?.source_id);
+}
+
 function getTags(db: DatabaseSync, joinId: string): string[] {
   const statement = db.prepare(
     'SELECT tag FROM book_tags WHERE join_id = ? ORDER BY tag COLLATE NOCASE',
@@ -197,6 +207,7 @@ function toBook(db: DatabaseSync, record: BookRow): Book {
     pageCount: enrichment?.page_count ?? null,
     enrichmentStatus: enrichmentStatusFor(enrichment),
     enrichmentSource: enrichmentSourceFor(enrichment),
+    enrichmentSourceUrl: enrichmentSourceUrlFor(enrichment),
     enrichedAt: enrichment?.enriched_at ?? null,
     refreshedAt: record.last_refreshed_at,
     libibUrl: `${LIBIB_BASE_URL}?solo=${encodeURIComponent(record.join_id)}`,

@@ -22,6 +22,8 @@ function book(joinId: string): Book {
     pageCount: null,
     enrichmentStatus: null,
     enrichmentSource: null,
+    enrichmentSourceUrl: null,
+    enrichedAt: null,
     refreshedAt: null,
     libibUrl: `https://example.test/${joinId}`,
   };

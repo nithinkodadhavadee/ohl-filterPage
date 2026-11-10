@@ -27,6 +27,7 @@ export interface Book {
   pageCount: number | null;
   enrichmentStatus: EnrichmentStatus | null;
   enrichmentSource: string | null;
+  enrichmentSourceUrl: string | null;
   enrichedAt: string | null;
   refreshedAt: string | null;
   libibUrl: string;
