@@ -1,13 +1,14 @@
-# 30: Show enrichment status and the last full pass
+# 30: Enrichment status, run history and last pass
 
-**What to build:** The Librarian cannot tell whether an Enrichment pass has finished, how many books are unmatched, or when the next pass runs without querying the database. Expose a clear status: the last completed full pass time, counts by status (enriched, unmatched, failed), in-progress state, the next scheduled refresh and the last error. Show it in the API and in a compact status area on the page.
+**What to build:** Add a shared **run log** and expose enrichment status. Every job run is one row: `kind` (Catalogue scan, Enrichment pass, Book sweep cycle, Snapshot, Restore, Export, Override import), `trigger` (startup, scheduled, manual, automatic), `status` (running, ok, partial, failed), `started_at`, `finished_at`, `duration`, per-kind `counts`, `error` and `note`. Do not prune the table; rows are tiny. Expose the last completed full Enrichment pass, counts by status for visible books, in-progress state, next scheduled refresh, last error and the run history. Expose a book's `enrichedAt` for ticket 31. Tickets 32 and 34 build on this run log.
 
-**Blocked by:** None (next-pass candidate)
+**Blocked by:** None (can start immediately)
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
-- [ ] `/api/status` exposes `lastFullPassAt`, counts by status, `inProgress`, `nextRunAt` and `lastError`.
+- [ ] A run-log table exists with the fields above and is created by an idempotent migration.
+- [ ] Every Enrichment pass writes a `running` row and finishes it with status, counts and error.
+- [ ] `/api/status` exposes last full pass time, counts by enrichment status, in-progress state, next run, last error and run history.
 - [ ] Counts exclude Hidden books.
-- [ ] A book's `enrichedAt` is available to the detail view (ticket 31 uses it).
-- [ ] The UI shows the enrichment status in a compact, mobile-friendly area.
-- [ ] Tests cover the status shape and the Hidden exclusion.
+- [ ] A book's `enrichedAt` is exposed for the detail view.
+- [ ] Tests cover the schema, the status shape, Hidden exclusion and failure recording.

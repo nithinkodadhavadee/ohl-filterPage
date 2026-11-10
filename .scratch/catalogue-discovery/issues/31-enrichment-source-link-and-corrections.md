@@ -1,13 +1,13 @@
-# 31: Link each book to its enrichment source and allow corrections
+# 31: Show the enrichment source on a book
 
-**What to build:** In the book detail view, show the enrichment source, a link to the matched record (for example `https://openlibrary.org/works/OL...W`), and when it was enriched, so anyone can verify the match. Add a "Report a correction" link that opens a prefilled message containing the title, Libib join id and source URL. Unmatched books show no source link, explain that no record was found, and offer the same reporting route.
+**What to build:** In the book detail view, show the enrichment source, a link to the matched record (for example `https://openlibrary.org/works/OL...W`) and the enriched-at time, so anyone can verify the match. Unmatched books show no source link and explain that no record was found. There is no report-correction feature: readers contact the Librarian directly.
 
-**Blocked by:** None (next-pass candidate)
+**Blocked by:** 30 (needs the exposed `enrichedAt`)
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
 - [ ] Enriched books show the source name, a link to the matched record and the enriched-at time.
 - [ ] Unmatched books show no source link and an explanation instead.
-- [ ] A "Report a correction" link is prefilled with the book title, join id and source URL (or a clear no-match description).
-- [ ] The API exposes the enriched-at time and enough source information to build the link.
+- [ ] The API exposes the source record id or URL and the enriched-at time.
+- [ ] No reporting or correction form is added.
 - [ ] The link is keyboard-accessible and works on mobile.

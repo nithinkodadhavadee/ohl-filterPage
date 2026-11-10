@@ -50,9 +50,12 @@ Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-
 
 - [ ] 11 First run and snapshots — superseded by 20, 21, 22, 23
 
-## Next pass (candidates, needs-triage)
+## Next pass — ready for agents (not implemented)
 
-- [ ] 27 Filter by multiple authors — multi-select author picker, OR semantics; author-string vs individual-name question open
-- [ ] 30 Enrichment status and last pass — counts, last pass time, in-progress, next run, last error
-- [ ] 31 Enrichment source link and corrections — link each matched book to its source record and offer a correction report
-- [ ] 32 Book sweep completion and failures — last completed cycle, progress estimate, per-book outcomes and an audit export
+- [ ] 27 Filter by multiple authors — searchable multi-select of split author names
+- [ ] 30 Enrichment status and run log — shared job history, last pass, counts, errors
+- [ ] 31 Enrichment source link — source name, matched-record link and enriched-at
+- [ ] 32 Book sweep completion and failures — last cycle, progress estimate, ledger and audit (blocked by 30)
+- [ ] 34 Status page — public /status with current state and lazy run history (blocked by 30, 32)
+
+Unscheduled ideas live in `BACKLOG.md`; they are not tickets and do not enter pass planning.

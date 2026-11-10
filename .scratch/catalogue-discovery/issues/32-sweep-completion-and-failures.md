@@ -1,14 +1,14 @@
-# 32: Report Book sweep completion and per-book failures
+# 32: Book sweep completion and failures
 
-**What to build:** The only sweep signal today is the current cycle position. There is no last-completed time, no failure or skip ledger, and no way to tell a book that has not been swept yet from one where Libib returned no detail. Expose the last completed cycle's start, finish and duration; the current cycle's position, total and estimated remaining time; a stall indicator; and a per-book sweep outcome (refreshed, skipped, failed) with a timestamp and reason. Provide a Librarian list or CSV of books that still have no successful sweep after a cycle, and mark records whose Copies/Out/Holds are still at their unswept zero values.
+**What to build:** Record every Book sweep cycle in the shared run log and record a per-book sweep ledger: `join_id`, last attempt time, outcome (`refreshed` / `skipped` / `failed`) and reason. Expose the last completed cycle's start, finish and duration; the current position, total and estimated remaining time; a stalled flag; and the last error. Provide an audit list or CSV of books with no successful sweep, and let the page distinguish a record that has never been swept (Copies/Out/Holds still at their zero defaults) from a genuinely empty record. Do not add sleep-specific behaviour; the laptop is a development device and the server stays on.
 
-**Blocked by:** None (next-pass candidate)
+**Blocked by:** 30 (uses the run log)
 
-**Status:** needs-triage
+**Status:** ready-for-agent
 
-- [ ] `/api/status` exposes the last completed cycle's start, finish and duration, the current progress and an estimated remaining time, the last error and a stalled flag.
-- [ ] Each book records its last sweep attempt time, outcome (`refreshed` / `skipped` / `failed`) and reason.
-- [ ] A full cycle can be audited: a list or CSV of books without a successful sweep, with the reason.
-- [ ] "0 copies / 0 out / 0 holds" can be distinguished between a genuinely empty record and a record that has never been swept.
-- [ ] Hidden books are excluded.
-- [ ] Tests cover the status shape, the ledger and the audit export.
+- [ ] Each sweep cycle writes a run-log row with position, total and refreshed/skipped/failed counts.
+- [ ] `/api/status` exposes last completed cycle start/finish/duration, current progress, estimated remaining, a stalled flag and last error.
+- [ ] Each book records its last attempt, outcome and reason.
+- [ ] An audit endpoint or CSV lists books with no successful sweep, excluding Hidden books.
+- [ ] The UI can distinguish unswept zeroes from genuinely empty records.
+- [ ] Tests cover the run row, status shape, ledger and audit output.
