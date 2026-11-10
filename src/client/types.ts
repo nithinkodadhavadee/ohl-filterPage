@@ -9,10 +9,15 @@ export interface CrawlerStatus {
     position: number;
     total: number;
     startedAt: string | null;
+    estimatedRemainingMs: number | null;
+    stalled: boolean;
   };
   lastCycle: {
     startedAt: string | null;
     finishedAt: string | null;
+    duration: number | null;
+    counts: Record<string, number> | null;
+    lastError: string | null;
   };
   backoff: {
     attempt: number;

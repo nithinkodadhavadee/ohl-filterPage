@@ -10,6 +10,15 @@ import {
   type EnrichmentAdapterRegistry,
 } from './enrichment.js';
 import type { LibibDetail } from './libib-detail.js';
+import {
+  finishRun,
+  findLatestRun,
+  readRuns,
+  startRun,
+  updateRun,
+  type RunCounts,
+} from './run-log.js';
+import { recordSweepAttempt } from './sweep-ledger.js';
 import { errorMessage, sleep as defaultSleep } from './util.js';
 import { LibibRequestError } from './libib-index.js';
 import {
@@ -26,12 +35,15 @@ export type CrawlStepOutcome = 'idle' | CrawlOutcome;
 export interface CrawlerState {
   cursor: number;
   cycleStartedAt: string | null;
+  lastProgressAt: string | null;
   lastCycleStartedAt: string | null;
   lastCycleFinishedAt: string | null;
   backoffAttempt: number;
   lastOutcome: CrawlOutcome | null;
   lastError: string | null;
 }
+
+export const DEFAULT_SWEEP_STALL_THRESHOLD_MS = 5 * 60 * 1000;
 
 export interface CrawlerStatus {
   enabled: boolean;
@@ -40,10 +52,15 @@ export interface CrawlerStatus {
     position: number;
     total: number;
     startedAt: string | null;
+    estimatedRemainingMs: number | null;
+    stalled: boolean;
   };
   lastCycle: {
     startedAt: string | null;
     finishedAt: string | null;
+    duration: number | null;
+    counts: RunCounts | null;
+    lastError: string | null;
   };
   backoff: {
     attempt: number;
@@ -101,6 +118,12 @@ const LAST_CYCLE_FINISHED_KEY = 'crawl_last_cycle_finished_at';
 const BACKOFF_ATTEMPT_KEY = 'crawl_backoff_attempt';
 const LAST_OUTCOME_KEY = 'crawl_last_outcome';
 const LAST_ERROR_KEY = 'crawl_last_error';
+const LAST_PROGRESS_KEY = 'crawl_last_progress_at';
+const CYCLE_RUN_ID_KEY = 'crawl_cycle_run_id';
+const CYCLE_REFRESHED_KEY = 'crawl_cycle_refreshed';
+const CYCLE_SKIPPED_KEY = 'crawl_cycle_skipped';
+const CYCLE_FAILED_KEY = 'crawl_cycle_failed';
+const CYCLE_LAST_ERROR_KEY = 'crawl_cycle_last_error';
 
 function readValue(db: DatabaseSync, key: string): string | null {
   const row = db
@@ -136,6 +159,7 @@ export function readCrawlerState(db: DatabaseSync): CrawlerState {
   return {
     cursor: parseNonNegativeInteger(readValue(db, CURSOR_KEY), 0),
     cycleStartedAt: readValue(db, CYCLE_STARTED_KEY),
+    lastProgressAt: readValue(db, LAST_PROGRESS_KEY),
     lastCycleStartedAt: readValue(db, LAST_CYCLE_STARTED_KEY),
     lastCycleFinishedAt: readValue(db, LAST_CYCLE_FINISHED_KEY),
     backoffAttempt: parseNonNegativeInteger(
@@ -167,6 +191,71 @@ function needsFirstSightEnrichment(
   return row !== undefined && row.last_refreshed_at === null;
 }
 
+function readCounter(db: DatabaseSync, key: string): number {
+  return parseNonNegativeInteger(readValue(db, key), 0);
+}
+
+function cycleCounts(
+  position: number,
+  total: number,
+  refreshed: number,
+  skipped: number,
+  failed: number,
+): RunCounts {
+  return { position, total, refreshed, skipped, failed };
+}
+
+function startSweepCycle(
+  db: DatabaseSync,
+  startedAt: string,
+  resetCursor: boolean,
+): number {
+  if (resetCursor) writeValue(db, CURSOR_KEY, '0');
+  writeValue(db, CYCLE_STARTED_KEY, startedAt);
+  writeValue(db, LAST_PROGRESS_KEY, startedAt);
+  writeValue(db, CYCLE_REFRESHED_KEY, '0');
+  writeValue(db, CYCLE_SKIPPED_KEY, '0');
+  writeValue(db, CYCLE_FAILED_KEY, '0');
+  writeValue(db, CYCLE_LAST_ERROR_KEY, null);
+
+  const runId = startRun(db, {
+    kind: 'book_sweep_cycle',
+    trigger: 'automatic',
+    note: 'cycle',
+    startedAt,
+  });
+  writeValue(db, CYCLE_RUN_ID_KEY, String(runId));
+  return runId;
+}
+
+function ensureSweepCycleRun(
+  db: DatabaseSync,
+  startedAt: string,
+): number {
+  const existing = parseNonNegativeInteger(
+    readValue(db, CYCLE_RUN_ID_KEY),
+    0,
+  );
+  if (existing > 0) {
+    if (readValue(db, LAST_PROGRESS_KEY) === null) {
+      writeValue(db, LAST_PROGRESS_KEY, startedAt);
+    }
+    return existing;
+  }
+
+  const runId = startRun(db, {
+    kind: 'book_sweep_cycle',
+    trigger: 'automatic',
+    note: 'cycle',
+    startedAt,
+  });
+  writeValue(db, CYCLE_RUN_ID_KEY, String(runId));
+  if (readValue(db, LAST_PROGRESS_KEY) === null) {
+    writeValue(db, LAST_PROGRESS_KEY, startedAt);
+  }
+  return runId;
+}
+
 export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
   const sampleIds = getSampleJoinIds(deps.db);
   const total = sampleIds?.length ?? 0;
@@ -186,17 +275,20 @@ export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
 
   let cursor = state.cursor;
   let cycleStartedAt = state.cycleStartedAt;
+  let runId: number;
 
   if (cursor >= total || cursor < 0) {
     cursor = 0;
     cycleStartedAt = nowIso;
-    writeValue(deps.db, CURSOR_KEY, String(cursor));
-    writeValue(deps.db, CYCLE_STARTED_KEY, cycleStartedAt);
+    runId = startSweepCycle(deps.db, nowIso, true);
   } else if (cycleStartedAt === null) {
     cycleStartedAt = nowIso;
-    writeValue(deps.db, CYCLE_STARTED_KEY, cycleStartedAt);
+    runId = startSweepCycle(deps.db, nowIso, false);
+  } else {
+    runId = ensureSweepCycleRun(deps.db, cycleStartedAt);
   }
 
+  const startedAt = cycleStartedAt;
   const joinId = sampleIds[cursor];
 
   try {
@@ -215,20 +307,58 @@ export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
     }
 
     const detail = await deps.fetchDetail(joinId);
+    let refreshed = readCounter(deps.db, CYCLE_REFRESHED_KEY);
+    let skipped = readCounter(deps.db, CYCLE_SKIPPED_KEY);
+    const failed = readCounter(deps.db, CYCLE_FAILED_KEY);
+
     if (detail) {
       persistBookDetail(deps.db, detail, nowIso);
+      recordSweepAttempt(deps.db, {
+        joinId,
+        attemptedAt: nowIso,
+        outcome: 'refreshed',
+      });
+      refreshed += 1;
+    } else {
+      recordSweepAttempt(deps.db, {
+        joinId,
+        attemptedAt: nowIso,
+        outcome: 'skipped',
+        reason: 'Libib returned no detail',
+      });
+      skipped += 1;
     }
 
     cursor += 1;
     const cycleFinished = cursor >= total;
+    const position = cycleFinished ? total : cursor;
+    const counts = cycleCounts(
+      position,
+      total,
+      refreshed,
+      skipped,
+      failed,
+    );
+
+    writeValue(deps.db, CYCLE_REFRESHED_KEY, String(refreshed));
+    writeValue(deps.db, CYCLE_SKIPPED_KEY, String(skipped));
+    writeValue(deps.db, CURSOR_KEY, String(position));
+    writeValue(deps.db, LAST_PROGRESS_KEY, nowIso);
 
     if (cycleFinished) {
-      writeValue(deps.db, CURSOR_KEY, String(total));
-      writeValue(deps.db, LAST_CYCLE_STARTED_KEY, cycleStartedAt);
+      writeValue(deps.db, LAST_CYCLE_STARTED_KEY, startedAt);
       writeValue(deps.db, LAST_CYCLE_FINISHED_KEY, nowIso);
       writeValue(deps.db, CYCLE_STARTED_KEY, null);
+      writeValue(deps.db, CYCLE_RUN_ID_KEY, null);
+      finishRun(deps.db, runId, {
+        status: failed > 0 ? 'partial' : 'ok',
+        counts,
+        error:
+          failed > 0 ? readValue(deps.db, CYCLE_LAST_ERROR_KEY) : null,
+        finishedAt: nowIso,
+      });
     } else {
-      writeValue(deps.db, CURSOR_KEY, String(cursor));
+      updateRun(deps.db, runId, { counts });
     }
 
     writeValue(deps.db, LAST_OUTCOME_KEY, 'ok');
@@ -237,7 +367,7 @@ export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
     return {
       outcome: 'ok',
       joinId,
-      position: cycleFinished ? total : cursor,
+      position,
       total,
       error: null,
       cycleFinished,
@@ -245,9 +375,30 @@ export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
   } catch (error) {
     const outcome = classifyError(error);
     const message = errorMessage(error);
+    const failed = readCounter(deps.db, CYCLE_FAILED_KEY) + 1;
 
+    recordSweepAttempt(deps.db, {
+      joinId,
+      attemptedAt: nowIso,
+      outcome: 'failed',
+      reason: message,
+    });
+
+    writeValue(deps.db, CYCLE_FAILED_KEY, String(failed));
     writeValue(deps.db, LAST_OUTCOME_KEY, outcome);
     writeValue(deps.db, LAST_ERROR_KEY, message);
+    writeValue(deps.db, CYCLE_LAST_ERROR_KEY, message);
+
+    updateRun(deps.db, runId, {
+      counts: cycleCounts(
+        Math.min(cursor, total),
+        total,
+        readCounter(deps.db, CYCLE_REFRESHED_KEY),
+        readCounter(deps.db, CYCLE_SKIPPED_KEY),
+        failed,
+      ),
+      error: message,
+    });
 
     return {
       outcome,
@@ -260,18 +411,99 @@ export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
   }
 }
 
+const RECENT_SWEEP_RUNS = 5;
+
+function recentPaceMsPerBook(db: DatabaseSync): number | null {
+  const runs = readRuns(db, 'book_sweep_cycle', {
+    limit: RECENT_SWEEP_RUNS,
+    statuses: ['ok', 'partial'],
+  });
+
+  const rates: number[] = [];
+  for (const run of runs) {
+    const completed = run.counts?.position ?? 0;
+    if (run.duration !== null && completed > 0) {
+      rates.push(run.duration / completed);
+    }
+  }
+  if (rates.length === 0) return null;
+
+  return rates.reduce((total, rate) => total + rate, 0) / rates.length;
+}
+
+function estimateRemainingMs(
+  db: DatabaseSync,
+  position: number,
+  total: number,
+  cycleStartedAt: string | null,
+  nowMs: number,
+): number | null {
+  if (total <= 0) return null;
+  if (position >= total) return 0;
+
+  let pace = recentPaceMsPerBook(db);
+  if (pace === null && cycleStartedAt !== null && position > 0) {
+    const startedMs = Date.parse(cycleStartedAt);
+    if (Number.isFinite(startedMs) && nowMs > startedMs) {
+      pace = (nowMs - startedMs) / position;
+    }
+  }
+
+  if (pace === null || !Number.isFinite(pace) || pace < 0) return null;
+  return Math.round((total - position) * pace);
+}
+
+function isSweepStalled(
+  state: CrawlerState,
+  position: number,
+  total: number,
+  nowMs: number,
+  thresholdMs: number,
+): boolean {
+  if (state.cycleStartedAt === null || total === 0 || position >= total) {
+    return false;
+  }
+
+  const marker = state.lastProgressAt ?? state.cycleStartedAt;
+  const markerMs = Date.parse(marker);
+  if (!Number.isFinite(markerMs)) return false;
+  return nowMs - markerMs > thresholdMs;
+}
+
+function durationBetween(
+  startedAt: string | null,
+  finishedAt: string | null,
+): number | null {
+  if (startedAt === null || finishedAt === null) return null;
+  const started = Date.parse(startedAt);
+  const finished = Date.parse(finishedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(finished)) return null;
+  return Math.max(0, finished - started);
+}
+
 export function getCrawlerStatus(
   db: DatabaseSync,
   options: {
     enabled?: boolean;
     startup?: StartupStatus;
     scheduled?: ScheduledScanStatus;
+    now?: () => Date;
+    stallThresholdMs?: number;
   } = {},
 ): CrawlerStatus {
   const sampleIds = getSampleJoinIds(db);
   const total = sampleIds?.length ?? 0;
   const state = readCrawlerState(db);
   const position = total === 0 ? 0 : Math.min(state.cursor, total);
+  const now = options.now?.() ?? new Date();
+  const nowMs = now.getTime();
+  const stallThresholdMs =
+    options.stallThresholdMs ?? DEFAULT_SWEEP_STALL_THRESHOLD_MS;
+  const lastRun = findLatestRun(db, 'book_sweep_cycle', [
+    'ok',
+    'partial',
+    'failed',
+  ]);
 
   const status: CrawlerStatus = {
     enabled: options.enabled ?? false,
@@ -280,11 +512,33 @@ export function getCrawlerStatus(
       position,
       total,
       startedAt: state.cycleStartedAt,
+      estimatedRemainingMs: estimateRemainingMs(
+        db,
+        position,
+        total,
+        state.cycleStartedAt,
+        nowMs,
+      ),
+      stalled: isSweepStalled(state, position, total, nowMs, stallThresholdMs),
     },
-    lastCycle: {
-      startedAt: state.lastCycleStartedAt,
-      finishedAt: state.lastCycleFinishedAt,
-    },
+    lastCycle: lastRun
+      ? {
+          startedAt: lastRun.startedAt,
+          finishedAt: lastRun.finishedAt,
+          duration: lastRun.duration,
+          counts: lastRun.counts,
+          lastError: lastRun.error,
+        }
+      : {
+          startedAt: state.lastCycleStartedAt,
+          finishedAt: state.lastCycleFinishedAt,
+          duration: durationBetween(
+            state.lastCycleStartedAt,
+            state.lastCycleFinishedAt,
+          ),
+          counts: null,
+          lastError: null,
+        },
     backoff: {
       attempt: state.backoffAttempt,
       active: state.backoffAttempt > 0,

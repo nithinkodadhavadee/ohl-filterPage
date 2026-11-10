@@ -41,6 +41,7 @@ export interface RunLogEntry {
 export const STATUS_RUN_KINDS: readonly RunKind[] = [
   'catalogue_scan',
   'enrichment_pass',
+  'book_sweep_cycle',
   'snapshot',
   'restore',
   'export',

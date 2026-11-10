@@ -8,6 +8,17 @@ export interface Rating {
 
 export type EnrichmentStatus = 'enriched' | 'unmatched' | 'failed';
 
+export const SWEEP_OUTCOMES = ['refreshed', 'skipped', 'failed'] as const;
+
+export type SweepOutcome = (typeof SWEEP_OUTCOMES)[number];
+
+export interface BookSweepState {
+  lastAttemptAt: string;
+  outcome: SweepOutcome;
+  reason: string | null;
+  lastSuccessAt: string | null;
+}
+
 export interface Book {
   joinId: string;
   title: string;
@@ -29,6 +40,7 @@ export interface Book {
   enrichmentSource: string | null;
   enrichedAt: string | null;
   refreshedAt: string | null;
+  sweep?: BookSweepState | null;
   libibUrl: string;
 }
 

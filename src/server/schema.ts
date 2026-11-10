@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS match_overrides (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS book_sweep_ledger (
+  join_id TEXT PRIMARY KEY REFERENCES book_records(join_id) ON DELETE CASCADE,
+  last_attempt_at TEXT NOT NULL,
+  outcome TEXT NOT NULL CHECK (outcome IN ('refreshed', 'skipped', 'failed')),
+  reason TEXT,
+  last_success_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS crawl_state (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -79,4 +87,6 @@ CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag);
 CREATE INDEX IF NOT EXISTS idx_book_subjects_subject ON book_subjects(subject);
 CREATE INDEX IF NOT EXISTS idx_run_log_kind_started_at
   ON run_log(kind, started_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_book_sweep_ledger_success
+  ON book_sweep_ledger(last_success_at);
 `;
