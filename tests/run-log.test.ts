@@ -21,7 +21,7 @@ import {
   readRuns,
   startRun,
 } from '../src/server/run-log.js';
-import { takeSnapshot } from '../src/server/snapshot.js';
+import { snapshotOnSuccess, takeSnapshot } from '../src/server/snapshot.js';
 
 let dataDir: string;
 let db: DatabaseSync;
@@ -257,12 +257,42 @@ describe('job instrumentation', () => {
     });
   });
 
+  it('logs a single-book enrichment with no visible target as partial', async () => {
+    insertBook('book-1');
+    db.prepare("UPDATE book_records SET hidden = 1 WHERE join_id = 'book-1'").run();
+
+    const result = await runEnrichCli(['--id', 'book-1'], {
+      db,
+      adapters: new EnrichmentAdapterRegistry([adapter()]),
+      now: () => new Date('2026-11-10T10:00:00.000Z'),
+      log: () => {},
+      error: () => {},
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(readRuns(db, 'enrichment_pass')[0]).toMatchObject({
+      status: 'partial',
+      note: 'No visible book record to enrich.',
+      counts: { enriched: 0, unmatched: 0, failed: 0, total: 0, processed: 0 },
+    });
+  });
+
   it('logs a snapshot', () => {
     const config = loadConfig({ dataDir });
     takeSnapshot(db, config, {
       trigger: 'manual',
       now: () => new Date('2026-11-10T10:00:00.000Z'),
     });
+
+    expect(readRuns(db, 'snapshot')[0]).toMatchObject({
+      trigger: 'manual',
+      status: 'ok',
+    });
+  });
+
+  it('records the trigger passed to the success snapshot hook', () => {
+    const config = loadConfig({ dataDir });
+    snapshotOnSuccess(db, config, 'manual', () => {})();
 
     expect(readRuns(db, 'snapshot')[0]).toMatchObject({
       trigger: 'manual',

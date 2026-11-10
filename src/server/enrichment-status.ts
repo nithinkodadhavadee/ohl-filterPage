@@ -3,12 +3,9 @@ import type {
   EnrichmentStatusCounts,
   EnrichmentStatusSummary,
 } from '../shared/contract.js';
-import {
-  DEFAULT_RUN_HISTORY_LIMIT,
-  findRunningRun,
-  readRuns,
-} from './run-log.js';
+import { findRunningRun } from './run-log.js';
 import { readLastFullEnrichmentAt } from './startup.js';
+import { VISIBLE_BOOK_SQL } from './visibility.js';
 
 interface CountRow {
   total: number;
@@ -24,7 +21,6 @@ interface TimeRow {
 
 export interface EnrichmentStatusOptions {
   nextScheduledRunAt?: string | null;
-  historyLimit?: number;
 }
 
 function readCounts(db: DatabaseSync): EnrichmentStatusCounts {
@@ -38,7 +34,7 @@ function readCounts(db: DatabaseSync): EnrichmentStatusCounts {
         SUM(CASE WHEN e.status = 'failed' THEN 1 ELSE 0 END) AS failed
       FROM book_records b
       LEFT JOIN enrichment e ON e.join_id = b.join_id
-      WHERE b.hidden = 0
+      WHERE b.${VISIBLE_BOOK_SQL}
     `)
     .get() as unknown as CountRow | undefined;
 
@@ -90,8 +86,5 @@ export function getEnrichmentStatus(
     nextScheduledRunAt: options.nextScheduledRunAt ?? null,
     lastError: lastFailed?.error ?? null,
     counts: readCounts(db),
-    history: readRuns(db, 'enrichment_pass', {
-      limit: options.historyLimit ?? DEFAULT_RUN_HISTORY_LIMIT,
-    }),
   };
 }

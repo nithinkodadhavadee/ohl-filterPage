@@ -1,5 +1,3 @@
-import type { RunLogEntry } from './run-log.js';
-
 export interface Rating {
   average: number;
   count: number;
@@ -165,7 +163,6 @@ export interface EnrichmentStatusSummary {
   nextScheduledRunAt: string | null;
   lastError: string | null;
   counts: EnrichmentStatusCounts;
-  history: RunLogEntry[];
 }
 
 export function hasNoEnrichmentData(

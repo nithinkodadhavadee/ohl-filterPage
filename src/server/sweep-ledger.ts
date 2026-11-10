@@ -4,6 +4,7 @@ import type {
   SweepOutcome,
 } from '../shared/contract.js';
 import { csvLine } from './csv.js';
+import { VISIBLE_BOOK_SQL } from './visibility.js';
 
 export interface RecordSweepInput {
   joinId: string;
@@ -38,15 +39,6 @@ interface SweepLedgerRow {
   last_success_at: string | null;
 }
 
-interface AuditRow {
-  join_id: string;
-  title: string;
-  author: string | null;
-  last_attempt_at: string | null;
-  outcome: SweepOutcome | null;
-  reason: string | null;
-}
-
 export function recordSweepAttempt(
   db: DatabaseSync,
   input: RecordSweepInput,
@@ -57,18 +49,8 @@ export function recordSweepAttempt(
     ) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(join_id) DO UPDATE SET
       last_attempt_at = excluded.last_attempt_at,
-      outcome = CASE
-        WHEN excluded.outcome = 'skipped'
-          AND book_sweep_ledger.outcome = 'refreshed'
-          THEN book_sweep_ledger.outcome
-        ELSE excluded.outcome
-      END,
-      reason = CASE
-        WHEN excluded.outcome = 'skipped'
-          AND book_sweep_ledger.outcome = 'refreshed'
-          THEN book_sweep_ledger.reason
-        ELSE excluded.reason
-      END,
+      outcome = excluded.outcome,
+      reason = excluded.reason,
       last_success_at = COALESCE(
         excluded.last_success_at,
         book_sweep_ledger.last_success_at
@@ -82,6 +64,15 @@ export function recordSweepAttempt(
   );
 }
 
+function toSweepState(row: SweepLedgerRow): BookSweepState {
+  return {
+    lastAttemptAt: row.last_attempt_at,
+    outcome: row.outcome,
+    reason: row.reason,
+    lastSuccessAt: row.last_success_at,
+  };
+}
+
 export function getSweepLedger(
   db: DatabaseSync,
   joinId: string,
@@ -93,14 +84,29 @@ export function getSweepLedger(
       WHERE join_id = ?
     `)
     .get(joinId) as unknown as SweepLedgerRow | undefined;
-  if (!row) return null;
+  return row ? toSweepState(row) : null;
+}
 
-  return {
-    lastAttemptAt: row.last_attempt_at,
-    outcome: row.outcome,
-    reason: row.reason,
-    lastSuccessAt: row.last_success_at,
-  };
+export function getSweepLedgers(
+  db: DatabaseSync,
+  joinIds: readonly string[],
+): Map<string, BookSweepState> {
+  const map = new Map<string, BookSweepState>();
+  if (joinIds.length === 0) return map;
+
+  const placeholders = joinIds.map(() => '?').join(', ');
+  const rows = db
+    .prepare(`
+      SELECT join_id, last_attempt_at, outcome, reason, last_success_at
+      FROM book_sweep_ledger
+      WHERE join_id IN (${placeholders})
+    `)
+    .all(...joinIds) as unknown as Array<SweepLedgerRow & { join_id: string }>;
+
+  for (const row of rows) {
+    map.set(row.join_id, toSweepState(row));
+  }
+  return map;
 }
 
 export function listBooksWithoutSuccessfulSweep(
@@ -109,28 +115,21 @@ export function listBooksWithoutSuccessfulSweep(
   const rows = db
     .prepare(`
       SELECT
-        b.join_id,
-        b.title,
-        b.author,
-        l.last_attempt_at,
-        l.outcome,
-        l.reason
+        b.join_id AS joinId,
+        b.title AS title,
+        b.author AS author,
+        l.last_attempt_at AS lastAttemptAt,
+        l.outcome AS outcome,
+        l.reason AS reason
       FROM book_records b
       LEFT JOIN book_sweep_ledger l ON l.join_id = b.join_id
-      WHERE b.hidden = 0
+      WHERE b.${VISIBLE_BOOK_SQL}
         AND l.last_success_at IS NULL
       ORDER BY b.title COLLATE NOCASE, b.join_id
     `)
-    .all() as unknown as AuditRow[];
+    .all() as unknown as SweepAuditRow[];
 
-  return rows.map((row) => ({
-    joinId: row.join_id,
-    title: row.title,
-    author: row.author,
-    lastAttemptAt: row.last_attempt_at,
-    outcome: row.outcome,
-    reason: row.reason,
-  }));
+  return rows;
 }
 
 export function getSweepAudit(db: DatabaseSync): SweepAuditExport {

@@ -12,7 +12,7 @@ import {
   type EnrichmentAdapter,
   type EnrichmentOutcome,
 } from './enrichment.js';
-import { finishRun, startRun, type RunTrigger } from './run-log.js';
+import { beginRun, type RunTrigger } from './run-log.js';
 import { snapshotOnSuccess } from './snapshot.js';
 import { recordFullEnrichment } from './startup.js';
 import { errorMessage, sleep as defaultSleep } from './util.js';
@@ -208,24 +208,23 @@ export async function runEnrichCli(
   const summary: EnrichSummary = { enriched: 0, unmatched: 0, failed: 0 };
   const outcomes: EnrichmentOutcome[] = [];
   const clock = deps.now ?? (() => new Date());
-  const runId = startRun(deps.db, {
-    kind: 'enrichment_pass',
-    trigger: deps.trigger ?? 'manual',
-    note: selection.kind === 'id' ? `id:${selection.joinId}` : selection.kind,
-    startedAt: clock(),
-  });
+  const run = beginRun(
+    deps.db,
+    {
+      kind: 'enrichment_pass',
+      trigger: deps.trigger ?? 'manual',
+      note: selection.kind === 'id' ? `id:${selection.joinId}` : selection.kind,
+    },
+    clock,
+  );
 
   const finish = (
     status: 'ok' | 'partial' | 'failed',
     counts: Record<string, number>,
     runError: string | null = null,
+    note: string | null = null,
   ): void => {
-    finishRun(deps.db, runId, {
-      status,
-      counts,
-      error: runError,
-      finishedAt: clock(),
-    });
+    run.finish({ status, counts, error: runError, note });
   };
 
   try {
@@ -280,8 +279,14 @@ export async function runEnrichCli(
     }
 
     if (selection.kind === 'id') {
+      const noTargets = joinIds.length === 0;
+      if (noTargets) {
+        log(
+          `No visible book record to enrich for ${selection.joinId}.`,
+        );
+      }
       finish(
-        joinIds.length === 0 ? 'ok' : 'partial',
+        'partial',
         {
           enriched: 0,
           unmatched: 0,
@@ -289,6 +294,8 @@ export async function runEnrichCli(
           total: joinIds.length,
           processed: outcomes.length,
         },
+        noTargets ? 'No book record matched the enrichment request.' : null,
+        noTargets ? 'No visible book record to enrich.' : null,
       );
       return { exitCode: 0 };
     }
@@ -372,7 +379,9 @@ if (isMain) {
       db,
       adapters,
       delayMs,
-      onComplete: snapshotOnSuccess(db, config, (line) => console.error(line)),
+      onComplete: snapshotOnSuccess(db, config, 'manual', (line) =>
+        console.error(line),
+      ),
     });
     process.exitCode = result.exitCode;
   } finally {

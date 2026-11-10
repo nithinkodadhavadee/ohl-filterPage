@@ -82,9 +82,7 @@ describe('GET /api/status', () => {
           pending: 0,
           total: 0,
         },
-        history: [],
       },
-      runHistory: [],
     });
   });
 

@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/server/app.js';
-import { getBook } from '../src/server/books.js';
+import { getBook, getBooks } from '../src/server/books.js';
 import { loadConfig } from '../src/server/config.js';
 import {
   crawlOne,
@@ -253,7 +253,7 @@ describe('per-book sweep ledger', () => {
     });
   });
 
-  it('does not let a skip replace a successful refresh, but records a failure', () => {
+  it('records the latest attempt outcome while keeping success history', () => {
     insertBook('100', 'Book 100');
 
     recordSweepAttempt(db, {
@@ -270,8 +270,8 @@ describe('per-book sweep ledger', () => {
 
     expect(getSweepLedger(db, '100')).toEqual({
       lastAttemptAt: '2026-11-10T10:05:00.000Z',
-      outcome: 'refreshed',
-      reason: null,
+      outcome: 'skipped',
+      reason: 'Libib returned no detail',
       lastSuccessAt: '2026-11-10T10:00:00.000Z',
     });
 
@@ -313,6 +313,26 @@ describe('per-book sweep ledger', () => {
         lastSuccessAt: '2026-11-10T10:00:00.000Z',
       },
     });
+  });
+
+  it('includes sweep state for every book in a result page', () => {
+    insertBook('100', 'Never swept');
+    insertBook('101', 'Swept', {
+      lastRefreshedAt: '2026-11-10T10:00:00.000Z',
+    });
+    recordSweepAttempt(db, {
+      joinId: '101',
+      attemptedAt: '2026-11-10T10:00:00.000Z',
+      outcome: 'refreshed',
+    });
+
+    const response = getBooks(db, { limit: 10 });
+    const byJoinId = new Map(
+      response.books.map((book) => [book.joinId, book.sweep]),
+    );
+
+    expect(byJoinId.get('100')).toBeNull();
+    expect(byJoinId.get('101')).toMatchObject({ outcome: 'refreshed' });
   });
 });
 

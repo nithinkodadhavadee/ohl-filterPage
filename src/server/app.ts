@@ -31,7 +31,6 @@ import {
   DEFAULT_RUN_HISTORY_LIMIT,
   MAX_RUN_HISTORY_LIMIT,
   readRunHistoryPage,
-  readRuns,
   type RunTrigger,
 } from './run-log.js';
 import { createLibibAdapter } from './libib.js';
@@ -61,7 +60,7 @@ import {
   type SortField,
   type UnmatchedFilter,
 } from '../shared/contract.js';
-import { STATUS_RUN_KINDS, isRunKind } from '../shared/run-log.js';
+import { isRunKind } from '../shared/run-log.js';
 
 export interface StartupOverrides {
   scan?: () => Promise<unknown>;
@@ -166,7 +165,6 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       enrichment: getEnrichmentStatus(db, {
         nextScheduledRunAt: crawler.scheduled?.nextRunAt ?? null,
       }),
-      runHistory: readRuns(db, STATUS_RUN_KINDS, { limit: 20 }),
     };
   };
 
@@ -368,7 +366,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           trigger,
         }));
 
-    const snapshot = snapshotOnSuccess(db, config, logger);
+    const snapshot = snapshotOnSuccess(db, config, 'automatic', logger);
 
     const scanFor = (trigger: RunTrigger) => async (): Promise<unknown> => {
       const result = await runScanFor(trigger)();

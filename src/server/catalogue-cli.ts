@@ -50,7 +50,9 @@ try {
     ),
     logger: (message: string) => console.error(message),
     trigger: 'manual',
-    onComplete: snapshotOnSuccess(db, config, (line) => console.error(line)),
+    onComplete: snapshotOnSuccess(db, config, 'manual', (line) =>
+      console.error(line),
+    ),
   };
 
   const result =

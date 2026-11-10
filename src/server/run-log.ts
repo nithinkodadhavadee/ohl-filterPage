@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  RUN_HISTORY_PAGE_SIZE,
   type RunCounts,
   type RunHistoryPage,
   type RunKind,
@@ -59,14 +60,14 @@ export interface ReadRunsOptions {
   statuses?: readonly RunStatus[];
 }
 
-export const DEFAULT_RUN_HISTORY_LIMIT = 20;
+export const DEFAULT_RUN_HISTORY_LIMIT = RUN_HISTORY_PAGE_SIZE;
 export const MAX_RUN_HISTORY_LIMIT = 100;
 
 function toIso(value: Date | string): string {
   return typeof value === 'string' ? value : value.toISOString();
 }
 
-function durationBetween(startedAt: string, finishedAt: string): number {
+export function durationBetween(startedAt: string, finishedAt: string): number {
   const started = Date.parse(startedAt);
   const finished = Date.parse(finishedAt);
   if (!Number.isFinite(started) || !Number.isFinite(finished)) return 0;
@@ -152,6 +153,29 @@ export function finishRun(
     input.note ?? null,
     id,
   );
+}
+
+export interface RunRecorder {
+  id: number;
+  clock: () => Date;
+  finish: (input: FinishRunInput) => void;
+}
+
+export function beginRun(
+  db: DatabaseSync,
+  input: Omit<StartRunInput, 'startedAt'>,
+  clock: () => Date = () => new Date(),
+): RunRecorder {
+  const id = startRun(db, { ...input, startedAt: clock() });
+  return {
+    id,
+    clock,
+    finish: (finishInput) =>
+      finishRun(db, id, {
+        ...finishInput,
+        finishedAt: finishInput.finishedAt ?? clock(),
+      }),
+  };
 }
 
 export interface UpdateRunInput {

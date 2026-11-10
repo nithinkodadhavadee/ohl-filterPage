@@ -1,5 +1,4 @@
 import type { EnrichmentStatusSummary } from '../shared/contract';
-import type { RunLogEntry } from '../shared/run-log';
 
 export type ViewMode = 'grid' | 'table';
 
@@ -32,5 +31,4 @@ export interface CrawlerStatus {
 
 export interface StatusResponse extends CrawlerStatus {
   enrichment: EnrichmentStatusSummary;
-  runHistory: RunLogEntry[];
 }
