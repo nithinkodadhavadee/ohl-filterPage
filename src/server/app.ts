@@ -20,8 +20,10 @@ import {
 } from './crawler.js';
 import { openDatabase } from './db.js';
 import { parseDelayMs } from './delay.js';
+import { getEnrichmentStatus } from './enrichment-status.js';
 import { DEFAULT_ENRICH_DELAY_MS } from './enrichment.js';
 import { runEnrichCli } from './enrich-cli.js';
+import { readRuns, type RunTrigger } from './run-log.js';
 import { createLibibAdapter } from './libib.js';
 import { DEFAULT_INDEX_DELAY_MS } from './libib-index.js';
 import {
@@ -45,6 +47,7 @@ import {
   type SortField,
   type UnmatchedFilter,
 } from '../shared/contract.js';
+import { STATUS_RUN_KINDS } from '../shared/run-log.js';
 
 export interface StartupOverrides {
   scan?: () => Promise<unknown>;
@@ -134,12 +137,21 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   let startup: StartupHandle | null = null;
   let scheduled: ScheduledScanHandle | null = null;
 
-  const currentStatus = () =>
-    getCrawlerStatus(db, {
+  const currentStatus = () => {
+    const crawler = getCrawlerStatus(db, {
       enabled: crawlerEnabled,
       startup: startup?.status(),
       scheduled: scheduled?.status(),
     });
+
+    return {
+      ...crawler,
+      enrichment: getEnrichmentStatus(db, {
+        nextScheduledRunAt: crawler.scheduled?.nextRunAt ?? null,
+      }),
+      runHistory: readRuns(db, STATUS_RUN_KINDS, { limit: 20 }),
+    };
+  };
 
   const clientDir = path.resolve(process.cwd(), 'dist/client');
   if (options.serveStatic && existsSync(clientDir)) {
@@ -273,7 +285,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       DEFAULT_ENRICH_DELAY_MS,
     );
 
-    const runScan =
+    const runScanFor = (trigger: RunTrigger): (() => Promise<unknown>) =>
       options.startupDeps?.scan ??
       (() =>
         scanCatalogue(db, {
@@ -282,9 +294,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           cacheCover: (item) =>
             cacheCover(item, { coversDir: config.coversDir }),
           logger,
+          trigger,
         } satisfies CatalogueScanDeps));
 
-    const runEnrich =
+    const runEnrichFor = (
+      trigger: RunTrigger,
+    ): ((context: StartupTaskContext) => Promise<unknown>) =>
       options.startupDeps?.enrich ??
       ((context) =>
         runEnrichCli(['--all'], {
@@ -293,23 +308,24 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           delayMs: enrichDelayMs,
           signal: context.signal,
           error: logger ?? ((line: string) => console.error(line)),
+          trigger,
         }));
 
     const snapshot = snapshotOnSuccess(db, config, logger);
 
-    const scan = async (): Promise<unknown> => {
-      const result = await runScan();
+    const scanFor = (trigger: RunTrigger) => async (): Promise<unknown> => {
+      const result = await runScanFor(trigger)();
       snapshot();
       return result;
     };
 
-    const enrich = async (
-      context: StartupTaskContext,
-    ): Promise<unknown> => {
-      const result = await runEnrich(context);
-      snapshot();
-      return result;
-    };
+    const enrichFor =
+      (trigger: RunTrigger) =>
+      async (context: StartupTaskContext): Promise<unknown> => {
+        const result = await runEnrichFor(trigger)(context);
+        snapshot();
+        return result;
+      };
 
     const startSweep =
       options.startupDeps?.startSweep ??
@@ -325,16 +341,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
     startup = startStartup({
       db,
-      scan,
-      enrich,
+      scan: scanFor('startup'),
+      enrich: enrichFor('startup'),
       startSweep,
       cooldownMs: config.enrichmentCooldownMs,
       logger,
     });
 
     scheduled = startScheduledScan({
-      scan,
-      enrich,
+      scan: scanFor('scheduled'),
+      enrich: enrichFor('scheduled'),
       intervalMs: config.catalogueScanIntervalMs,
       now: options.scheduledDeps?.now,
       sleep: options.scheduledDeps?.sleep,

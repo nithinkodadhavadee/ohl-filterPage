@@ -12,6 +12,7 @@ import {
   type EnrichmentAdapter,
   type EnrichmentOutcome,
 } from './enrichment.js';
+import { finishRun, startRun, type RunTrigger } from './run-log.js';
 import { snapshotOnSuccess } from './snapshot.js';
 import { recordFullEnrichment } from './startup.js';
 import { errorMessage, sleep as defaultSleep } from './util.js';
@@ -30,6 +31,7 @@ export interface EnrichCliDeps {
   log?: (line: string) => void;
   error?: (line: string) => void;
   signal?: AbortSignal;
+  trigger?: RunTrigger;
   onComplete?: (result: EnrichCliResult) => void | Promise<void>;
 }
 
@@ -205,60 +207,150 @@ export async function runEnrichCli(
   const sleep = deps.sleep ?? defaultSleep;
   const summary: EnrichSummary = { enriched: 0, unmatched: 0, failed: 0 };
   const outcomes: EnrichmentOutcome[] = [];
+  const clock = deps.now ?? (() => new Date());
+  const runId = startRun(deps.db, {
+    kind: 'enrichment_pass',
+    trigger: deps.trigger ?? 'manual',
+    note: selection.kind === 'id' ? `id:${selection.joinId}` : selection.kind,
+    startedAt: clock(),
+  });
 
-  for (let index = 0; index < joinIds.length; index += 1) {
-    if (deps.signal?.aborted) break;
-    if (index > 0 && delayMs > 0) await sleep(delayMs, deps.signal);
-
-    const joinId = joinIds[index];
-    let outcome: EnrichmentOutcome;
-    try {
-      outcome = await enrichBook(deps.db, adapters, joinId, {
-        now: deps.now,
-      });
-    } catch (caught) {
-      error(errorMessage(caught));
-      if (selection.kind === 'id') return { exitCode: 1 };
-      summary.failed += 1;
-      continue;
-    }
-
-    summary[outcome.status] += 1;
-    outcomes.push(outcome);
-
-    if (selection.kind === 'id') {
-      return logSingleOutcome(outcome, joinId, log, error);
-    }
-
-    if (outcome.status === 'failed') {
-      error(`Could not enrich book record ${joinId}: ${outcome.error}`);
-    }
-  }
-
-  if (selection.kind === 'id') {
-    return { exitCode: 0 };
-  }
-
-  log(
-    `Refreshed enrichment for ${joinIds.length} book record(s): ` +
-      `${summary.enriched} enriched, ${summary.unmatched} unmatched, ` +
-      `${summary.failed} failed.`,
-  );
-
-  const result: EnrichCliResult = {
-    exitCode: summary.failed > 0 ? 1 : 0,
-    summary,
-    outcomes,
+  const finish = (
+    status: 'ok' | 'partial' | 'failed',
+    counts: Record<string, number>,
+    runError: string | null = null,
+  ): void => {
+    finishRun(deps.db, runId, {
+      status,
+      counts,
+      error: runError,
+      finishedAt: clock(),
+    });
   };
 
-  if (selection.kind === 'all') {
-    if (!deps.signal?.aborted) {
-      recordFullEnrichment(deps.db, deps.now?.() ?? new Date());
-    }
-    await deps.onComplete?.(result);
-  }
+  try {
+    for (let index = 0; index < joinIds.length; index += 1) {
+      if (deps.signal?.aborted) break;
+      if (index > 0 && delayMs > 0) await sleep(delayMs, deps.signal);
 
-  return result;
+      const joinId = joinIds[index];
+      let outcome: EnrichmentOutcome;
+      try {
+        outcome = await enrichBook(deps.db, adapters, joinId, {
+          now: deps.now,
+        });
+      } catch (caught) {
+        error(errorMessage(caught));
+        if (selection.kind === 'id') {
+          finish(
+            'failed',
+            { enriched: 0, unmatched: 0, failed: 1, total: 1, processed: 0 },
+            errorMessage(caught),
+          );
+          return { exitCode: 1 };
+        }
+        summary.failed += 1;
+        continue;
+      }
+
+      summary[outcome.status] += 1;
+      outcomes.push(outcome);
+
+      if (selection.kind === 'id') {
+        const result = logSingleOutcome(outcome, joinId, log, error);
+        const failed = outcome.status === 'failed';
+        const runError = outcome.status === 'failed' ? outcome.error : null;
+        finish(
+          failed ? 'failed' : 'ok',
+          {
+            enriched: outcome.status === 'enriched' ? 1 : 0,
+            unmatched: outcome.status === 'unmatched' ? 1 : 0,
+            failed: failed ? 1 : 0,
+            total: 1,
+            processed: 1,
+          },
+          runError,
+        );
+        return result;
+      }
+
+      if (outcome.status === 'failed') {
+        error(`Could not enrich book record ${joinId}: ${outcome.error}`);
+      }
+    }
+
+    if (selection.kind === 'id') {
+      finish(
+        joinIds.length === 0 ? 'ok' : 'partial',
+        {
+          enriched: 0,
+          unmatched: 0,
+          failed: 0,
+          total: joinIds.length,
+          processed: outcomes.length,
+        },
+      );
+      return { exitCode: 0 };
+    }
+
+    log(
+      `Refreshed enrichment for ${joinIds.length} book record(s): ` +
+        `${summary.enriched} enriched, ${summary.unmatched} unmatched, ` +
+        `${summary.failed} failed.`,
+    );
+
+    const result: EnrichCliResult = {
+      exitCode: summary.failed > 0 ? 1 : 0,
+      summary,
+      outcomes,
+    };
+
+    const aborted = deps.signal?.aborted === true;
+    const status =
+      summary.failed === 0
+        ? aborted
+          ? 'partial'
+          : 'ok'
+        : summary.enriched + summary.unmatched > 0
+          ? 'partial'
+          : 'failed';
+    const runError =
+      summary.failed === 0
+        ? aborted
+          ? 'Enrichment pass was interrupted.'
+          : null
+        : `${summary.failed} of ${joinIds.length} book record(s) failed to enrich.`;
+
+    finish(status, {
+      enriched: summary.enriched,
+      unmatched: summary.unmatched,
+      failed: summary.failed,
+      total: joinIds.length,
+      processed: outcomes.length,
+    }, runError);
+
+    if (selection.kind === 'all') {
+      if (!deps.signal?.aborted) {
+        recordFullEnrichment(deps.db, clock());
+      }
+      await deps.onComplete?.(result);
+    }
+
+    return result;
+  } catch (caught) {
+    finish(
+      'failed',
+      {
+        enriched: summary.enriched,
+        unmatched: summary.unmatched,
+        failed: summary.failed,
+        total: joinIds.length,
+        processed: outcomes.length,
+      },
+      errorMessage(caught),
+    );
+    throw caught;
+  }
 }
 
 const isMain =

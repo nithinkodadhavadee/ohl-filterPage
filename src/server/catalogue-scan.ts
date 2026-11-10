@@ -4,6 +4,7 @@ import {
   type EnrichmentAdapterRegistry,
 } from './enrichment.js';
 import type { LibibIndexItem } from './libib-index.js';
+import { withRun, type RunTrigger } from './run-log.js';
 import { selectSample } from './sample.js';
 import { errorMessage, sleep as defaultSleep } from './util.js';
 
@@ -16,6 +17,7 @@ export interface CatalogueScanDeps {
   sleep?: (milliseconds: number) => Promise<void>;
   logger?: (message: string) => void;
   now?: () => Date;
+  trigger?: RunTrigger;
   onComplete?: (result: CatalogueScanResult) => void | Promise<void>;
 }
 
@@ -243,7 +245,16 @@ async function persistCatalogueScan(
   return result;
 }
 
-export async function scanCatalogue(
+function countsFor(result: CatalogueScanResult): Record<string, number> {
+  return {
+    sampleSize: result.sampleSize,
+    added: result.added,
+    updated: result.updated,
+    removed: result.removed,
+  };
+}
+
+async function scanCatalogueRun(
   db: DatabaseSync,
   deps: CatalogueScanDeps,
 ): Promise<CatalogueScanResult> {
@@ -271,7 +282,24 @@ export async function scanCatalogue(
   return persistCatalogueScan(db, index, target, deps, 'scan', nextSampleIds);
 }
 
-export async function resampleCatalogue(
+export async function scanCatalogue(
+  db: DatabaseSync,
+  deps: CatalogueScanDeps,
+): Promise<CatalogueScanResult> {
+  return withRun(
+    db,
+    {
+      kind: 'catalogue_scan',
+      trigger: deps.trigger ?? 'automatic',
+      note: 'scan',
+      startedAt: deps.now?.() ?? new Date(),
+    },
+    () => scanCatalogueRun(db, deps),
+    (result) => ({ status: 'ok', counts: countsFor(result) }),
+  );
+}
+
+async function resampleCatalogueRun(
   db: DatabaseSync,
   deps: CatalogueScanDeps,
 ): Promise<CatalogueScanResult> {
@@ -284,5 +312,22 @@ export async function resampleCatalogue(
     deps,
     'resample',
     target.map((item) => item.joinId),
+  );
+}
+
+export async function resampleCatalogue(
+  db: DatabaseSync,
+  deps: CatalogueScanDeps,
+): Promise<CatalogueScanResult> {
+  return withRun(
+    db,
+    {
+      kind: 'catalogue_scan',
+      trigger: deps.trigger ?? 'automatic',
+      note: 'resample',
+      startedAt: deps.now?.() ?? new Date(),
+    },
+    () => resampleCatalogueRun(db, deps),
+    (result) => ({ status: 'ok', counts: countsFor(result) }),
   );
 }

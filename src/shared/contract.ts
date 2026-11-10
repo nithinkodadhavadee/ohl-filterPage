@@ -1,3 +1,5 @@
+import type { RunLogEntry } from './run-log.js';
+
 export interface Rating {
   average: number;
   count: number;
@@ -25,6 +27,7 @@ export interface Book {
   pageCount: number | null;
   enrichmentStatus: EnrichmentStatus | null;
   enrichmentSource: string | null;
+  enrichedAt: string | null;
   refreshedAt: string | null;
   libibUrl: string;
 }
@@ -133,6 +136,23 @@ export interface FacetsResponse {
   tags: FacetCount[];
   authors: FacetCount[];
   subjects: FacetCount[];
+}
+
+export interface EnrichmentStatusCounts {
+  enriched: number;
+  unmatched: number;
+  failed: number;
+  pending: number;
+  total: number;
+}
+
+export interface EnrichmentStatusSummary {
+  lastFullPassAt: string | null;
+  inProgress: boolean;
+  nextScheduledRunAt: string | null;
+  lastError: string | null;
+  counts: EnrichmentStatusCounts;
+  history: RunLogEntry[];
 }
 
 export function hasNoEnrichmentData(

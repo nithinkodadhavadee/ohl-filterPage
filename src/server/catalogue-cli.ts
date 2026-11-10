@@ -1,6 +1,7 @@
 import {
   resampleCatalogue,
   scanCatalogue,
+  type CatalogueScanDeps,
   type CatalogueScanResult,
 } from './catalogue-scan.js';
 import { createAdapterRegistry } from './adapters.js';
@@ -36,7 +37,7 @@ const libib = createLibibAdapter({
 });
 
 try {
-  const deps = {
+  const deps: CatalogueScanDeps = {
     fetchIndex: () => libib.fetchIndex(),
     sampleSize: config.sampleSize,
     cacheCover: (item: Parameters<typeof cacheCover>[0]) =>
@@ -48,6 +49,7 @@ try {
       DEFAULT_ENRICH_DELAY_MS,
     ),
     logger: (message: string) => console.error(message),
+    trigger: 'manual',
     onComplete: snapshotOnSuccess(db, config, (line) => console.error(line)),
   };
 

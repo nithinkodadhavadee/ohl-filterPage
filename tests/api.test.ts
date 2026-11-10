@@ -121,6 +121,7 @@ describe('GET /api/books', () => {
       pageCount: 328,
       rating: { average: 4.28, count: 449, lowSample: false },
       enrichmentSource: 'Open Library',
+      enrichedAt: '2026-11-02T10:00:00.000Z',
       libibUrl: 'https://www.libib.com/u/openhouselibrary?solo=167806440',
     });
     expect(book.coverUrl).toBe('/covers/nineteen-eighty-four.svg');
