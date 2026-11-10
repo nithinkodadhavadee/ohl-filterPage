@@ -24,6 +24,8 @@ export function selectSample(
   items: readonly LibibIndexItem[],
   size = SAMPLE_SIZE,
 ): LibibIndexItem[] {
+  if (size <= 0) return [...items];
+
   const sample: LibibIndexItem[] = [];
   for (const item of items) {
     if (!isFromAOnward(item.title)) continue;

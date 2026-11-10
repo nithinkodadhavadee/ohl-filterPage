@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS book_records (
   out INTEGER NOT NULL DEFAULT 0,
   holds INTEGER NOT NULL DEFAULT 0,
   first_seen_at TEXT NOT NULL,
-  last_refreshed_at TEXT
+  last_refreshed_at TEXT,
+  hidden INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS book_tags (

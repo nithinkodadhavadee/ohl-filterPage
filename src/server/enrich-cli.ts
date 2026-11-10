@@ -110,14 +110,23 @@ interface EnrichmentStatusRow {
 function allBookIds(db: DatabaseSync): string[] {
   return (
     db
-      .prepare('SELECT join_id FROM book_records ORDER BY join_id')
+      .prepare(
+        'SELECT join_id FROM book_records WHERE hidden = 0 ORDER BY join_id',
+      )
       .all() as unknown as { join_id: string }[]
   ).map((entry) => entry.join_id);
 }
 
 function crawlSetIds(db: DatabaseSync): string[] {
   const sample = getSampleJoinIds(db);
-  return sample && sample.length > 0 ? sample : allBookIds(db);
+  return sample !== null ? sample : allBookIds(db);
+}
+
+function isHidden(db: DatabaseSync, joinId: string): boolean {
+  const row = db
+    .prepare('SELECT 1 AS found FROM book_records WHERE join_id = ? AND hidden = 1')
+    .get(joinId);
+  return row !== undefined;
 }
 
 function enrichmentStatuses(db: DatabaseSync): Map<string, string> {
@@ -131,7 +140,9 @@ export function selectEnrichTargets(
   db: DatabaseSync,
   selection: EnrichSelection,
 ): string[] {
-  if (selection.kind === 'id') return [selection.joinId];
+  if (selection.kind === 'id') {
+    return isHidden(db, selection.joinId) ? [] : [selection.joinId];
+  }
 
   const ids = crawlSetIds(db);
   if (selection.kind === 'all') return ids;

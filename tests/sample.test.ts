@@ -80,6 +80,17 @@ describe('selectSample', () => {
     );
   });
 
+  it('returns the whole index when the size is zero or negative', () => {
+    const index = [item('1984'), item('#hashtag'), item('Abundance')];
+
+    expect(selectSample(index, 0).map((entry) => entry.title)).toEqual([
+      '1984',
+      '#hashtag',
+      'Abundance',
+    ]);
+    expect(selectSample(index, -1)).toHaveLength(3);
+  });
+
   it('returns everything from A onward when fewer than 50 are available', () => {
     const index = [
       item('1984'),

@@ -37,9 +37,11 @@ function item(
 function deps(
   index: LibibIndexItem[],
   now: Date,
+  sampleSize = 50,
 ): CatalogueIndexDeps {
   return {
     fetchIndex: async () => index,
+    sampleSize,
     cacheCover: async (entry) =>
       entry.coverUrl ? `cover-${entry.joinId}.jpg` : null,
     now: () => now,
@@ -55,12 +57,13 @@ interface BookRow {
   copies: number;
   out: number;
   holds: number;
+  hidden: number;
 }
 
 function books(): BookRow[] {
   return db
     .prepare(
-      `SELECT join_id, title, author, cover_path, first_seen_at, copies, out, holds
+      `SELECT join_id, title, author, cover_path, first_seen_at, copies, out, holds, hidden
        FROM book_records ORDER BY join_id`,
     )
     .all() as unknown as BookRow[];
@@ -138,11 +141,12 @@ describe('refreshCatalogueIndex', () => {
       updated: 0,
       removed: 1,
     });
-    expect(books().map((book) => book.join_id)).toEqual(['101']);
-    expect(ftsCount()).toBe(1);
+    expect(books().map((book) => book.join_id)).toEqual(['101', '900']);
+    expect(books().find((book) => book.join_id === '900')?.hidden).toBe(1);
+    expect(ftsCount()).toBe(2);
   });
 
-  it('refreshes sampled records, removes disappearances and adds nothing new', async () => {
+  it('refreshes sampled records, hides disappearances and adds nothing new', async () => {
     const firstNow = new Date('2026-11-10T10:00:00.000Z');
     await refreshCatalogueIndex(
       db,
@@ -178,16 +182,18 @@ describe('refreshCatalogueIndex', () => {
     });
 
     const stored = books();
-    expect(stored.map((book) => book.join_id)).toEqual(['101']);
+    expect(stored.map((book) => book.join_id)).toEqual(['101', '102']);
     expect(stored[0]).toMatchObject({
       title: 'Abundance (Revised)',
       author: 'Second Author',
       cover_path: 'cover-101.jpg',
       first_seen_at: firstSeen,
+      hidden: 0,
     });
-    expect(state('sample_join_ids')).toBe(JSON.stringify(['101']));
+    expect(stored[1]).toMatchObject({ join_id: '102', hidden: 1 });
+    expect(state('sample_join_ids')).toBe(JSON.stringify(['101', '102']));
     expect(state('last_index_refreshed_at')).toBe(secondNow.toISOString());
-    expect(ftsCount()).toBe(1);
+    expect(ftsCount()).toBe(2);
   });
 });
 
@@ -226,9 +232,13 @@ describe('resampleCatalogueIndex', () => {
     const stored = books();
     expect(stored.map((book) => book.join_id).sort()).toEqual([
       '201',
+      '202',
       '203',
       '204',
     ]);
+    expect(stored.find((book) => book.join_id === '202')).toMatchObject({
+      hidden: 1,
+    });
     expect(stored.find((book) => book.join_id === '201')).toMatchObject({
       title: 'Aardvark (Revised)',
       first_seen_at: firstSeen,
@@ -243,6 +253,6 @@ describe('resampleCatalogueIndex', () => {
       JSON.stringify(['203', '201', '204']),
     );
     expect(state('last_index_refreshed_at')).toBe(secondNow.toISOString());
-    expect(ftsCount()).toBe(3);
+    expect(ftsCount()).toBe(4);
   });
 });

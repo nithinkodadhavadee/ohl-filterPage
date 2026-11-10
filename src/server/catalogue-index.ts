@@ -8,6 +8,7 @@ import { selectSample } from './sample.js';
 
 export interface CatalogueIndexDeps {
   fetchIndex: () => Promise<LibibIndexItem[]>;
+  sampleSize?: number;
   cacheCover?: (item: LibibIndexItem) => Promise<string | null>;
   adapters?: EnrichmentAdapterRegistry;
   enrichDelayMs?: number;
@@ -35,6 +36,7 @@ interface ExistingRecord {
   description: string | null;
   cover_path: string | null;
   first_seen_at: string;
+  hidden: number;
 }
 
 interface PreparedItem {
@@ -77,13 +79,16 @@ async function persistSample(
   target: readonly LibibIndexItem[],
   deps: CatalogueIndexDeps,
   mode: CatalogueIndexResult['mode'],
+  sampleIds: readonly string[],
 ): Promise<CatalogueIndexResult> {
   const now = (deps.now?.() ?? new Date()).toISOString();
   const uniqueTarget = dedupeById(target);
 
   const existing = new Map<string, ExistingRecord>();
   const existingRows = db
-    .prepare('SELECT join_id, description, cover_path, first_seen_at FROM book_records')
+    .prepare(
+      'SELECT join_id, description, cover_path, first_seen_at, hidden FROM book_records',
+    )
     .all() as unknown as ExistingRecord[];
   for (const record of existingRows) existing.set(record.join_id, record);
 
@@ -97,24 +102,32 @@ async function persistSample(
   }
 
   const targetIds = new Set(uniqueTarget.map((item) => item.joinId));
-  const removedIds = [...existing.keys()].filter((joinId) => !targetIds.has(joinId));
+  const vanishedIds = [...existing.keys()].filter(
+    (joinId) => !targetIds.has(joinId),
+  );
+  const removedIds = vanishedIds.filter(
+    (joinId) => existing.get(joinId)?.hidden === 0,
+  );
 
   const upsertBook = db.prepare(`
     INSERT INTO book_records (
       join_id, title, author, publisher, year, description, cover_path,
-      copies, out, holds, first_seen_at, last_refreshed_at
-    ) VALUES (?, ?, ?, NULL, NULL, NULL, ?, 0, 0, 0, ?, NULL)
+      copies, out, holds, first_seen_at, last_refreshed_at, hidden
+    ) VALUES (?, ?, ?, NULL, NULL, NULL, ?, 0, 0, 0, ?, NULL, 0)
     ON CONFLICT(join_id) DO UPDATE SET
       title = excluded.title,
       author = excluded.author,
-      cover_path = excluded.cover_path
+      cover_path = excluded.cover_path,
+      hidden = 0
   `);
   const deleteFts = db.prepare('DELETE FROM books_fts WHERE join_id = ?');
   const insertFts = db.prepare(`
     INSERT INTO books_fts (join_id, title, author, description)
     VALUES (?, ?, ?, ?)
   `);
-  const deleteBook = db.prepare('DELETE FROM book_records WHERE join_id = ?');
+  const hideBook = db.prepare(
+    'UPDATE book_records SET hidden = 1 WHERE join_id = ?',
+  );
 
   let added = 0;
   let updated = 0;
@@ -148,12 +161,11 @@ async function persistSample(
       );
     }
 
-    for (const joinId of removedIds) {
-      deleteFts.run(joinId);
-      deleteBook.run(joinId);
+    for (const joinId of vanishedIds) {
+      hideBook.run(joinId);
     }
 
-    writeState(db, SAMPLE_KEY, JSON.stringify(uniqueTarget.map((item) => item.joinId)));
+    writeState(db, SAMPLE_KEY, JSON.stringify(sampleIds));
     writeState(db, LAST_REFRESHED_KEY, now);
 
     db.exec('COMMIT');
@@ -207,18 +219,26 @@ export async function refreshCatalogueIndex(
 ): Promise<CatalogueIndexResult> {
   const index = dedupeById(await deps.fetchIndex());
   const sampledIds = readSampleIds(db);
+  const sampleSize = deps.sampleSize ?? 0;
 
   let target: LibibIndexItem[];
-  if (sampledIds !== null) {
+  let nextSampleIds: string[];
+
+  if (sampleSize <= 0) {
+    target = index;
+    nextSampleIds = index.map((item) => item.joinId);
+  } else if (sampledIds !== null) {
     const byId = new Map(index.map((item) => [item.joinId, item]));
     target = sampledIds
       .map((joinId) => byId.get(joinId))
       .filter((item): item is LibibIndexItem => item !== undefined);
+    nextSampleIds = sampledIds;
   } else {
-    target = selectSample(index);
+    target = selectSample(index, sampleSize);
+    nextSampleIds = target.map((item) => item.joinId);
   }
 
-  return persistSample(db, target, deps, 'index');
+  return persistSample(db, target, deps, 'index', nextSampleIds);
 }
 
 export async function resampleCatalogueIndex(
@@ -226,5 +246,12 @@ export async function resampleCatalogueIndex(
   deps: CatalogueIndexDeps,
 ): Promise<CatalogueIndexResult> {
   const index = dedupeById(await deps.fetchIndex());
-  return persistSample(db, selectSample(index), deps, 'resample');
+  const target = selectSample(index, deps.sampleSize ?? 0);
+  return persistSample(
+    db,
+    target,
+    deps,
+    'resample',
+    target.map((item) => item.joinId),
+  );
 }

@@ -35,6 +35,7 @@ const libib = createLibibAdapter({
 try {
   const deps = {
     fetchIndex: () => libib.fetchIndex(),
+    sampleSize: config.sampleSize,
     cacheCover: (item: Parameters<typeof cacheCover>[0]) =>
       cacheCover(item, { coversDir: config.coversDir }),
     adapters: createAdapterRegistry(),

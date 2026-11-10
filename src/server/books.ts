@@ -534,7 +534,9 @@ export function getBooks(
       ? joinIdsMatching(db, 'book_subjects', 'subject', subjectFilter)
       : null;
 
-  const allRecords = rows<BookRow>(db.prepare('SELECT * FROM book_records')).filter(
+  const allRecords = rows<BookRow>(
+    db.prepare('SELECT * FROM book_records WHERE hidden = 0'),
+  ).filter(
     (record) => {
       if (
         authorFilter &&
@@ -628,7 +630,9 @@ export function getBooks(
 }
 
 export function getBook(db: DatabaseSync, joinId: string): Book | null {
-  const statement = db.prepare('SELECT * FROM book_records WHERE join_id = ?');
+  const statement = db.prepare(
+    'SELECT * FROM book_records WHERE join_id = ? AND hidden = 0',
+  );
   const record = row<BookRow>(statement, joinId);
   return record ? toBook(db, record) : null;
 }
@@ -636,27 +640,31 @@ export function getBook(db: DatabaseSync, joinId: string): Book | null {
 export function getFacets(db: DatabaseSync): FacetsResponse {
   const tags = rows<FacetCount>(
     db.prepare(`
-      SELECT tag AS value, COUNT(DISTINCT join_id) AS count
-      FROM book_tags
-      GROUP BY tag
-      ORDER BY tag COLLATE NOCASE
+      SELECT t.tag AS value, COUNT(DISTINCT t.join_id) AS count
+      FROM book_tags t
+      JOIN book_records b ON b.join_id = t.join_id
+      WHERE b.hidden = 0
+      GROUP BY t.tag
+      ORDER BY t.tag COLLATE NOCASE
     `),
   );
   const authors = rows<FacetCount>(
     db.prepare(`
       SELECT author AS value, COUNT(*) AS count
       FROM book_records
-      WHERE author IS NOT NULL AND TRIM(author) <> ''
+      WHERE hidden = 0 AND author IS NOT NULL AND TRIM(author) <> ''
       GROUP BY author
       ORDER BY author COLLATE NOCASE
     `),
   );
   const subjects = rows<FacetCount>(
     db.prepare(`
-      SELECT subject AS value, COUNT(DISTINCT join_id) AS count
-      FROM book_subjects
-      GROUP BY subject
-      ORDER BY subject COLLATE NOCASE
+      SELECT s.subject AS value, COUNT(DISTINCT s.join_id) AS count
+      FROM book_subjects s
+      JOIN book_records b ON b.join_id = s.join_id
+      WHERE b.hidden = 0
+      GROUP BY s.subject
+      ORDER BY s.subject COLLATE NOCASE
     `),
   );
 
