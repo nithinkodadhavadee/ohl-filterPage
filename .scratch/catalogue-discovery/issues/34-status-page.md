@@ -4,7 +4,7 @@
 
 **Blocked by:** 30, 32
 
-**Status:** ready-for-agent
+**Status:** done (pass 4)
 
 - [ ] `/status` renders every section and shows the current/last run plus history.
 - [ ] History lazy-loads 20 rows per section until there are no more.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 30 (uses the run log)
 
-**Status:** ready-for-agent
+**Status:** done (pass 4)
 
 - [ ] Each sweep cycle writes a run-log row with position, total and refreshed/skipped/failed counts.
 - [ ] `/api/status` exposes last completed cycle start/finish/duration, current progress, estimated remaining, a stalled flag and last error.

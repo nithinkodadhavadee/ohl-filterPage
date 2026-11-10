@@ -358,9 +358,9 @@ Canonical CLI: `catalogue:scan`, `catalogue:resample`, `sweep` (`--book`, `--del
 
 ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots). ADR-0005 and ADR-0006 are superseded.
 
-## Next Pass (decided)
+## Pass 4 — Implemented
 
-Tickets 27, 30, 31, 32 and 34. Nothing implemented yet. Dependencies: 30 → 31 and 32; 30 and 32 → 34; 27 is independent. Unscheduled ideas live in `BACKLOG.md` so they do not enter pass planning.
+Tickets 27, 30, 31, 32 and 34 are implemented. Dependencies were 30 → 31 and 32; 30 and 32 → 34; 27 independent. Unscheduled ideas live in `BACKLOG.md` so they do not enter pass planning.
 
 1. **Filter by multiple authors — ticket 27.** Replace the author text box with a searchable multi-select. The facet splits Libib author strings on `&` and `,`, trims, dedupes, groups case-insensitively and shows counts. An empty search shows every author; typing filters the options. Selections combine as OR, match co-authored strings and are encoded in the URL. No separate free-text author filter.
 2. **Enrichment status and run log — ticket 30.** Add the shared run log (kind, trigger, status, start/finish, duration, counts, error, note) used by every job. Expose the last full Enrichment pass, counts by status, in-progress state, next run and last error; run history is served only by the paginated `/api/runs` endpoint. Expose a book's `enrichedAt`.

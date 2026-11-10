@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 4)
 
 - [ ] A run-log table exists with the fields above and is created by an idempotent migration.
 - [ ] Every Enrichment pass writes a `running` row and finishes it with status, counts and error.

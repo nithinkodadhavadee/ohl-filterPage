@@ -4,7 +4,7 @@
 
 **Blocked by:** 30 (needs the exposed `enrichedAt`)
 
-**Status:** ready-for-agent
+**Status:** done (pass 4)
 
 - [ ] Enriched books show the source name, a link to the matched record and the enriched-at time.
 - [ ] Unmatched books show no source link and an explanation instead.

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (pass 4)
 
 - [ ] The author facet splits on `&` and `,`, trims and dedupes, groups case-insensitively, and shows a book count per name.
 - [ ] The control shows every author when the search box is empty and filters options as the Patron types.

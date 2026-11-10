@@ -1,6 +1,6 @@
 # Catalogue Discovery — Status
 
-Branches (local; no remote, no PR): `feat/catalogue-discovery-v1`, `feat/catalogue-discovery-pass2`, `feat/catalogue-discovery-pass3`.
+Branches (local; no remote, no PR): `feat/catalogue-discovery-v1`, `feat/catalogue-discovery-pass2`, `feat/catalogue-discovery-pass3`, `feat/catalogue-discovery-pass4`.
 
 ## v1 prototype — implemented and verified
 
@@ -50,12 +50,12 @@ Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-
 
 - [ ] 11 First run and snapshots — superseded by 20, 21, 22, 23
 
-## Next pass — ready for agents (not implemented)
+## Pass 4 — implemented
 
-- [ ] 27 Filter by multiple authors — searchable multi-select of split author names
-- [ ] 30 Enrichment status and run log — shared job history, last pass, counts, errors
-- [ ] 31 Enrichment source link — source name, matched-record link and enriched-at
-- [ ] 32 Book sweep completion and failures — last cycle, progress estimate, ledger and audit (blocked by 30)
-- [ ] 34 Status page — public /status with current state and lazy run history (blocked by 30, 32)
+- [x] 27 Filter by multiple authors — searchable multi-select of split author names
+- [x] 30 Enrichment status and run log — shared job history, last pass, counts, errors
+- [x] 31 Enrichment source link — source name, matched-record link and enriched-at
+- [x] 32 Book sweep completion and failures — last cycle, progress estimate, ledger and audit
+- [x] 34 Status page — public /status with current state and lazy run history
 
-Unscheduled ideas live in `BACKLOG.md`; they are not tickets and do not enter pass planning.
+Verification: `typecheck`, `build`, 290 tests green. Unscheduled ideas live in `BACKLOG.md`; they are not tickets and do not enter pass planning.
