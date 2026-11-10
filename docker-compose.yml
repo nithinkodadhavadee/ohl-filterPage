@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+    image: open-house-library-discovery:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATA_DIR: /data
+      SAMPLE_SIZE: ${SAMPLE_SIZE:-0}
+      CYCLE_DELAY_SECONDS: ${CYCLE_DELAY_SECONDS:-30}
+      CRAWLER_ENABLED: ${CRAWLER_ENABLED:-true}
+      ENRICH_COOLDOWN_SECONDS: ${ENRICH_COOLDOWN_SECONDS:-3600}
+      CATALOGUE_SCAN_INTERVAL_SECONDS: ${CATALOGUE_SCAN_INTERVAL_SECONDS:-86400}
+      SNAPSHOT_RETAIN: ${SNAPSHOT_RETAIN:-10}
+      CRAWLER_MAX_BACKOFF_SECONDS: ${CRAWLER_MAX_BACKOFF_SECONDS:-900}
+      LIBIB_REQUEST_DELAY_MS: ${LIBIB_REQUEST_DELAY_MS:-1000}
+      ENRICH_REQUEST_DELAY_MS: ${ENRICH_REQUEST_DELAY_MS:-1000}
+      LIBIB_BASE_URL: ${LIBIB_BASE_URL:-https://www.libib.com/u/openhouselibrary}
+      LIBIB_LIBRARY_ID: ${LIBIB_LIBRARY_ID:-2677037}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3

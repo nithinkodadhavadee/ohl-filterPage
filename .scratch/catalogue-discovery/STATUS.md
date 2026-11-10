@@ -37,7 +37,7 @@ Verification: `typecheck`, `build`, 173 tests green; live API check of `?solo=`,
 - [ ] 22 Daily Scheduled catalogue scan — `ready-for-agent` (blocked by 21)
 - [ ] 23 Snapshots, Restore and Export — `ready-for-agent` (blocked by 20)
 - [ ] 24 Infinite scroll — `ready-for-agent` (no blockers)
-- [ ] 25 Containerisation and deployment — `ready-for-agent` (blocked by 21, 22, 23, 24)
+- [x] 25 Containerisation and deployment — implemented on `p3/25`; Docker build and live healthcheck not verified (Docker unavailable)
 - [ ] 26 Canonical CLI and operations documentation — `ready-for-agent` (blocked by 21, 22, 23)
 
 Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots). ADR-0005 and ADR-0006 are superseded.

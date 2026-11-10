@@ -202,8 +202,9 @@ Compiles the server and builds the frontend into `dist/`.
 
 ### `npm start`
 
-Serves the built app on `PORT`. It binds to `127.0.0.1`; the deployment shape
-puts a tunnel in front of it.
+Serves the built app on `PORT`, binding to `HOST` (`127.0.0.1` by default). The
+deployment shape sets `HOST=0.0.0.0` inside the container and publishes only the
+loopback port on the host.
 
 ### `npm test`
 
@@ -223,6 +224,7 @@ The pre-Pass 3 names are removed, not aliased: `index` became
 
 | Variable                          | Default                                   | Meaning                                                                 |
 | --------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------- |
+| `HOST`                            | `127.0.0.1`                               | Address the HTTP server binds to. The container sets `0.0.0.0`.          |
 | `PORT`                            | `3000`                                    | HTTP port.                                                              |
 | `DATA_DIR`                        | `./data`                                  | Directory holding the database, covers, snapshots and server lock.      |
 | `SAMPLE_SIZE`                     | `0` (whole visible Collection)            | Caps the Crawl set to the first N titles from A onward. Local sample: `50`. |
@@ -294,6 +296,179 @@ books, enrichments and Match overrides survive a Restore.
 
 ## Deployment
 
-Containerisation and hosting (Docker/Compose and the host-run Cloudflare Tunnel)
-are covered by ticket 25. This document describes the process-level commands and
-configuration that the deployment wraps.
+The service runs as one container. The image carries the application and the
+development fixtures needed by `seed`, but no catalogue database, cached covers
+or snapshots; those live in a host directory bind-mounted at `/data`. The
+container serves plain HTTP on a loopback-published port. TLS and public routing
+belong to a host-run Cloudflare Tunnel, never to the container.
+
+### Build and run with Docker
+
+```sh
+docker build -t open-house-library-discovery .
+mkdir -p data
+sudo chown -R 10001:10001 data
+docker run -d \
+  --name open-house-library-discovery \
+  --restart unless-stopped \
+  -p 127.0.0.1:3000:3000 \
+  -v "$PWD/data:/data" \
+  -e HOST=0.0.0.0 \
+  open-house-library-discovery
+```
+
+The image runs as fixed UID/GID `10001`. On Linux the bind-mounted host
+directory must be writable by that UID; the `chown` above prepares it. On Docker
+Desktop for macOS the mount is shared automatically. `HOST=0.0.0.0` is required
+inside the container so the published port can reach the process; the host
+publication stays on `127.0.0.1`.
+
+### Docker Compose
+
+The committed `docker-compose.yml` runs the single `app` service:
+
+```sh
+mkdir -p data
+sudo chown -R 10001:10001 data
+docker compose up -d --build
+docker compose ps
+docker compose logs -f app
+curl http://127.0.0.1:3000/health
+```
+
+It publishes `127.0.0.1:3000:3000`, binds `${DATA_DIR:-./data}` to `/data`, sets
+`restart: unless-stopped`, and passes every operational environment variable
+through with a default. Stopping the container or replacing the image keeps the
+volume; deleting `data/` or the `DATA_DIR` directory is the only way to lose
+catalogue state.
+
+### Environment injection
+
+Compose substitutes `${VARIABLE}` from the shell or from a `.env` file next to
+`docker-compose.yml` before the container starts. Those values become the
+container's environment when it is created; changing `.env` requires
+`docker compose up -d` to recreate the container. The running container does not
+mount the repository `.env`, and the image does not contain one. Inside the
+container the application always sees `DATA_DIR=/data`; the host-side
+`DATA_DIR` only chooses the bind-mount source.
+
+`PORT` is fixed at `3000` inside the container and in the published mapping. To
+move it, change both sides of `ports` and keep them equal.
+
+### First run and catch-up
+
+With an empty volume the service performs the normal **First run**: a Catalogue
+scan, then the Book sweep and a full Enrichment pass in parallel. `/health`
+answers as soon as the HTTP server is up; book records appear progressively.
+
+With a populated volume the service serves stored data immediately and performs
+the startup catch-up in the background: a Catalogue scan, then the Book sweep
+and an Enrichment pass. A full Enrichment pass is skipped when one completed
+within `ENRICH_COOLDOWN_SECONDS`.
+
+The image also carries the development fixture seed command. It is useful for a
+throwaway volume, not for production data:
+
+```sh
+docker compose exec app npm run seed
+```
+
+Run `docker compose exec app npm run catalogue:scan` instead when the volume
+already holds production data.
+
+### CLI commands inside the container
+
+The image ships the compiled server and every CLI entry point. The same npm
+script names used on the host work inside the container; the scripts run the
+compiled files when `tsx` is absent, and the TypeScript sources through `tsx`
+during local development:
+
+```sh
+docker compose exec app npm run snapshot
+docker compose exec app npm run sweep -- --book 12345
+docker compose exec app npm run enrich -- --unmatched
+docker compose exec app npm run export -- /data/exports/catalogue.sqlite
+```
+
+`docker compose exec` uses the environment of the running container, not the
+host `.env`. Paths given to `restore`, `export`, `overrides:import` and
+`export:unmatched` are inside the container; use a path under `/data` for files
+that should appear on the host.
+
+### Healthcheck
+
+The image and Compose define a healthcheck that calls `GET /health` with Node's
+`fetch` (no `curl` is installed). It runs every 30 seconds with a 5-second
+timeout, a 30-second start period and three retries. `docker compose ps` shows
+the result. `/health` says only that the HTTP server is alive; `/api/status`
+reports catalogue freshness, Book sweep progress, backoff and the last error.
+
+### Backup and restore
+
+Take a Snapshot and copy it off the volume:
+
+```sh
+docker compose exec app npm run snapshot
+cp data/snapshots/catalogue-2026-11-10T12-00-00-000Z.sqlite /backups/
+```
+
+Or export directly to a path under the bind mount and copy that:
+
+```sh
+docker compose exec app npm run export -- /data/exports/catalogue-2026-11-10.sqlite
+cp data/exports/catalogue-2026-11-10.sqlite /backups/
+```
+
+Snapshots contain the database only. Copy `data/covers/` separately if an
+off-host copy of the cached cover images is wanted; they are re-fetchable.
+
+Restore replaces the database and must run with the server stopped. `docker
+compose run` starts a separate one-off container against the same volume:
+
+```sh
+docker compose stop app
+docker compose run --rm --no-deps app npm run restore -- /data/snapshots/catalogue-2026-11-10T12-00-00-000Z.sqlite
+docker compose start app
+```
+
+The restore command removes stale SQLite `-wal` and `-shm` files and refuses to
+run while a server lock shows a live process. Recent circulation can be lost on
+Restore; it is cheap to sweep again. Hidden books, enrichments and Match
+overrides survive.
+
+### Upgrade and rollback
+
+Take a Snapshot, then rebuild and recreate the container. The data volume is
+untouched:
+
+```sh
+docker compose exec app npm run snapshot
+git pull
+docker compose build
+docker compose up -d
+```
+
+To roll back, check out the previous revision, rebuild and recreate the same way.
+If a release requires a data change, restore the Snapshot taken before the
+upgrade.
+
+### Cloudflare Tunnel ingress
+
+Run one `cloudflared` process on the host, shared by every project. Point the
+site's hostname at the loopback publication:
+
+```yaml
+tunnel: 00000000-0000-0000-0000-000000000000
+credentials-file: /etc/cloudflared/00000000-0000-0000-0000-000000000000.json
+
+ingress:
+  - hostname: catalogue.example.org
+    service: http://localhost:3000
+  - service: http_status:404
+```
+
+Create the DNS route once with
+`cloudflared tunnel route dns <tunnel-name> catalogue.example.org`, then run
+`cloudflared tunnel run <tunnel-name>`. Cloudflare terminates TLS, so neither
+the image nor Compose handles certificates. Because the published port is bound
+to `127.0.0.1`, the origin is reachable only through the tunnel.

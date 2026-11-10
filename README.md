@@ -50,6 +50,15 @@ Collection.
 The old `index`, `resample` and `refresh` script names are removed; use
 `catalogue:scan`, `catalogue:resample` and `sweep`.
 
+## Deployment
+
+The whole app runs as one container with the database, covers and snapshots on a
+host bind mount at `/data`. The container publishes plain HTTP on
+`127.0.0.1:3000`; a host-run Cloudflare Tunnel provides TLS and public routing.
+Start it with `docker compose up -d --build`. The full build, volume-permission,
+backup, restore, upgrade and tunnel instructions are in the
+[deployment section of the operations documentation](docs/operations.md#deployment).
+
 ## Development
 
 One command runs the API on port 3000 and the Vite UI on port 5173:
