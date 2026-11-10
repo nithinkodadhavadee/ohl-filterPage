@@ -1,5 +1,9 @@
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from 'fastify';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createAdapterRegistry } from './adapters.js';
@@ -23,7 +27,13 @@ import { parseDelayMs } from './delay.js';
 import { getEnrichmentStatus } from './enrichment-status.js';
 import { DEFAULT_ENRICH_DELAY_MS } from './enrichment.js';
 import { runEnrichCli } from './enrich-cli.js';
-import { readRuns, type RunTrigger } from './run-log.js';
+import {
+  DEFAULT_RUN_HISTORY_LIMIT,
+  MAX_RUN_HISTORY_LIMIT,
+  readRunHistoryPage,
+  readRuns,
+  type RunTrigger,
+} from './run-log.js';
 import { createLibibAdapter } from './libib.js';
 import { DEFAULT_INDEX_DELAY_MS } from './libib-index.js';
 import {
@@ -51,7 +61,7 @@ import {
   type SortField,
   type UnmatchedFilter,
 } from '../shared/contract.js';
-import { STATUS_RUN_KINDS } from '../shared/run-log.js';
+import { STATUS_RUN_KINDS, isRunKind } from '../shared/run-log.js';
 
 export interface StartupOverrides {
   scan?: () => Promise<unknown>;
@@ -73,6 +83,7 @@ export interface BuildAppOptions {
   port?: number;
   logger?: boolean;
   serveStatic?: boolean;
+  clientDir?: string;
   crawler?: boolean;
   startup?: boolean;
   startupDeps?: StartupOverrides;
@@ -159,16 +170,25 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     };
   };
 
-  const clientDir = path.resolve(process.cwd(), 'dist/client');
-  if (options.serveStatic && existsSync(clientDir)) {
+  const clientDir =
+    options.clientDir ?? path.resolve(process.cwd(), 'dist/client');
+  const servingClient = Boolean(options.serveStatic && existsSync(clientDir));
+  if (servingClient) {
     await app.register(fastifyStatic, { root: clientDir, prefix: '/' });
   }
 
   await app.register(fastifyStatic, {
     root: config.coversDir,
     prefix: '/covers/',
-    decorateReply: !(options.serveStatic && existsSync(clientDir)),
+    decorateReply: !servingClient,
   });
+
+  if (servingClient) {
+    const sendClient = (_request: FastifyRequest, reply: FastifyReply) =>
+      reply.sendFile('index.html');
+    app.get('/status', sendClient);
+    app.get('/status/', sendClient);
+  }
 
   app.addHook('onClose', async () => {
     await scheduled?.stop();
@@ -204,6 +224,30 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   app.get('/api/status', async () => currentStatus());
+
+  app.get<{
+    Querystring: { kind?: string; limit?: string; offset?: string };
+  }>('/api/runs', async (request, reply) => {
+    const kind = request.query.kind;
+    if (!kind || !isRunKind(kind)) {
+      return reply.code(400).send({ error: 'Unknown run kind' });
+    }
+
+    return readRunHistoryPage(db, kind, {
+      limit: parseInteger(
+        request.query.limit,
+        DEFAULT_RUN_HISTORY_LIMIT,
+        1,
+        MAX_RUN_HISTORY_LIMIT,
+      ),
+      offset: parseInteger(
+        request.query.offset,
+        0,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    });
+  });
 
   app.get('/api/sweep/audit', async () => getSweepAudit(db));
 

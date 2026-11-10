@@ -4,7 +4,8 @@ import type {
   BooksResponse,
   FacetsResponse,
 } from '../shared/contract';
-import type { CrawlerStatus } from './types';
+import type { RunHistoryPage, RunKind } from '../shared/run-log';
+import type { StatusResponse } from './types';
 
 export async function fetchBooks(query: BooksQuery = {}): Promise<BooksResponse> {
   const params = new URLSearchParams();
@@ -52,10 +53,26 @@ export async function fetchFacets(): Promise<FacetsResponse> {
   return (await response.json()) as FacetsResponse;
 }
 
-export async function fetchStatus(): Promise<CrawlerStatus> {
+export async function fetchStatus(): Promise<StatusResponse> {
   const response = await fetch('/api/status');
   if (!response.ok) {
     throw new Error(`Could not load crawler status (${response.status})`);
   }
-  return (await response.json()) as CrawlerStatus;
+  return (await response.json()) as StatusResponse;
+}
+
+export async function fetchRunHistory(
+  kind: RunKind,
+  options: { limit?: number; offset?: number } = {},
+): Promise<RunHistoryPage> {
+  const params = new URLSearchParams({
+    kind,
+    limit: String(options.limit ?? 20),
+    offset: String(options.offset ?? 0),
+  });
+  const response = await fetch(`/api/runs?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Could not load ${kind} history (${response.status})`);
+  }
+  return (await response.json()) as RunHistoryPage;
 }

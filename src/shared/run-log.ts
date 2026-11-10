@@ -38,6 +38,12 @@ export interface RunLogEntry {
   note: string | null;
 }
 
+export interface RunHistoryPage {
+  kind: RunKind;
+  runs: RunLogEntry[];
+  nextOffset: number | null;
+}
+
 export const STATUS_RUN_KINDS: readonly RunKind[] = [
   'catalogue_scan',
   'enrichment_pass',

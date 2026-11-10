@@ -1,3 +1,6 @@
+import type { EnrichmentStatusSummary } from '../shared/contract';
+import type { RunLogEntry } from '../shared/run-log';
+
 export type ViewMode = 'grid' | 'table';
 
 export type CrawlOutcome = 'ok' | 'throttled' | 'error';
@@ -25,4 +28,9 @@ export interface CrawlerStatus {
   };
   lastOutcome: CrawlOutcome | null;
   lastError: string | null;
+}
+
+export interface StatusResponse extends CrawlerStatus {
+  enrichment: EnrichmentStatusSummary;
+  runHistory: RunLogEntry[];
 }
