@@ -18,26 +18,27 @@ the project vocabulary.
 
 ```sh
 npm ci
-cp .env.example .env   # local sample: SAMPLE_SIZE=50
+cp .env.example .env.local   # then set SAMPLE_SIZE=50 in .env.local
 npm run seed
 ```
 
 The seed command writes fixtures into `DATA_DIR` (default `./data`) and never
-contacts Libib. `.env` is git-ignored; the `dev` and CLI scripts load it when
-present. Production leaves `SAMPLE_SIZE` unset (or `0`) to use the whole visible
-Collection.
+contacts Libib. `.env.local` is git-ignored; `npm run dev` and the CLI scripts
+load it after `.env`. Docker Compose reads only `.env`, where `SAMPLE_SIZE` stays
+`0` (the whole visible Collection) unless production is deliberately capped.
 
 ## Commands
 
 | Script                     | What it does                                             |
 | -------------------------- | -------------------------------------------------------- |
 | `npm run catalogue:scan`   | Read the Libib Catalogue index and reconcile the Crawl set |
-| `npm run catalogue:resample` | Re-pick the Crawl set and reconcile stored records     |
+| `npm run catalogue:resample` | Re-pick the Sample and reconcile stored records          |
 | `npm run sweep`            | Run one Book sweep; `--book <joinId>` and `--delay <ms>` |
 | `npm run enrich -- <target>` | Enrich `--all`, `--unmatched`, `--failed` or `--id <joinId>` |
 | `npm run snapshot`         | Write a Snapshot under `DATA_DIR/snapshots`              |
 | `npm run restore -- <path>` | Restore the database from a Snapshot (server stopped)   |
-| `npm run export -- <path>` | Export a Snapshot off-host                               |
+| `npm run export -- <destination>` | Export a fresh Snapshot off-host                    |
+| `npm run export -- <snapshot> <destination>` | Export a chosen existing Snapshot         |
 | `npm run overrides:import -- <path>` | Import Match overrides from a CSV              |
 | `npm run export:unmatched` | Export unmatched book records as CSV                     |
 | `npm run seed`             | Idempotently load fixtures into the database             |
@@ -56,7 +57,7 @@ The whole app runs as one container with the database, covers and snapshots on a
 host bind mount at `/data`. The container publishes plain HTTP on
 `127.0.0.1:3000`; a host-run Cloudflare Tunnel provides TLS and public routing.
 Start it with `docker compose up -d --build`. The full build, volume-permission,
-backup, restore, upgrade and tunnel instructions are in the
+Snapshot, Restore, upgrade and tunnel instructions are in the
 [deployment section of the operations documentation](docs/operations.md#deployment).
 
 ## Development
@@ -72,8 +73,8 @@ the API.
 
 ## API
 
-- `GET /health` → `{ "status": "ok" }`
-- `GET /api/status` → catalogue freshness, sweep progress, backoff, last error and startup progress
+- `GET /health` → `{ status, database, crawler, startup, scheduled }`; `503` when degraded
+- `GET /api/status` → catalogue freshness, sweep progress, backoff, last error and startup/scheduled progress
 - `GET /api/books?limit=&offset=` → `{ books, total, nextOffset, meta }`
 - `GET /api/books/:joinId` → one book, or `404`
 - `GET /api/facets` → `{ tags, authors, subjects }` with counts

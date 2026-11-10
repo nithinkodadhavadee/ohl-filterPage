@@ -638,26 +638,9 @@ function viewToUrl(view: ViewState): string {
     : window.location.pathname;
 }
 
-function viewQueryKey(view: ViewState): string {
-  return JSON.stringify([
-    view.q,
-    view.sort,
-    view.direction,
-    view.sort === 'random' ? view.seed : null,
-    view.author.trim(),
-    view.tags,
-    view.subjects,
-    view.holds,
-    view.availableOnly,
-    view.ratingMin.trim(),
-    view.includeLowSample,
-    view.pagesMin.trim(),
-    view.pagesMax.trim(),
-    view.unmatched,
-  ]);
-}
-
-function booksQueryForView(view: ViewState, offset: number): BooksQuery {
+function filterQueryForView(
+  view: ViewState,
+): Omit<BooksQuery, 'limit' | 'offset'> {
   return {
     q: view.q || undefined,
     sort: view.sort,
@@ -673,6 +656,16 @@ function booksQueryForView(view: ViewState, offset: number): BooksQuery {
     pagesMin: parseOptionalNumber(view.pagesMin),
     pagesMax: parseOptionalNumber(view.pagesMax),
     unmatched: view.unmatched,
+  };
+}
+
+function viewQueryKey(view: ViewState): string {
+  return JSON.stringify(filterQueryForView(view));
+}
+
+function booksQueryForView(view: ViewState, offset: number): BooksQuery {
+  return {
+    ...filterQueryForView(view),
     limit: BOOKS_BATCH_SIZE,
     offset,
   };

@@ -8,14 +8,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createAdapterRegistry } from '../src/server/adapters.js';
 import {
-  refreshCatalogueIndex,
-  type CatalogueIndexDeps,
-} from '../src/server/catalogue-index.js';
+  scanCatalogue,
+  type CatalogueScanDeps,
+} from '../src/server/catalogue-scan.js';
 import { loadConfig, type AppConfig } from '../src/server/config.js';
 import { openDatabase } from '../src/server/db.js';
 import { runEnrichCli } from '../src/server/enrich-cli.js';
@@ -219,7 +218,7 @@ describe('snapshots, restore and export', () => {
     });
   });
 
-  it('refuses to restore against a live lock but proceeds with a stale one', () => {
+  it('refuses to restore against a fresh heartbeat but proceeds with a stale one', () => {
     insertBook('book-1', 'Original');
     const snapshot = takeSnapshot(db, config, {
       now: () => new Date('2026-11-10T12:00:00.000Z'),
@@ -233,9 +232,23 @@ describe('snapshots, restore and export', () => {
     );
     releaseServerLock(config);
 
-    const dead = spawnSync(process.execPath, ['-e', '']);
-    expect(dead.pid).toBeTypeOf('number');
-    writeFileSync(serverLockPath(config), `${dead.pid}\n`, 'utf8');
+    writeFileSync(
+      serverLockPath(config),
+      JSON.stringify({ pid: 999_999, heartbeatAt: new Date().toISOString() }),
+      'utf8',
+    );
+    expect(() => restoreSnapshot(config, snapshot)).toThrow(
+      /server is running/,
+    );
+
+    writeFileSync(
+      serverLockPath(config),
+      JSON.stringify({
+        pid: process.pid,
+        heartbeatAt: new Date(Date.now() - 60_000).toISOString(),
+      }),
+      'utf8',
+    );
 
     expect(() => restoreSnapshot(config, snapshot)).not.toThrow();
     expect(existsSync(serverLockPath(config))).toBe(false);
@@ -245,6 +258,28 @@ describe('snapshots, restore and export', () => {
       .prepare('SELECT title FROM book_records WHERE join_id = ?')
       .get('book-1') as { title: string };
     expect(row.title).toBe('Original');
+  });
+
+  it('refuses a second start while the heartbeat is fresh', () => {
+    acquireServerLock(config, 111);
+    try {
+      expect(() => acquireServerLock(config, 222)).toThrow(
+        /already running/,
+      );
+    } finally {
+      releaseServerLock(config, 111);
+    }
+
+    writeFileSync(
+      serverLockPath(config),
+      JSON.stringify({
+        pid: 111,
+        heartbeatAt: new Date(Date.now() - 60_000).toISOString(),
+      }),
+      'utf8',
+    );
+    expect(() => acquireServerLock(config, 222)).not.toThrow();
+    releaseServerLock(config, 222);
   });
 
   it('exports a snapshot to a chosen path', () => {
@@ -274,17 +309,46 @@ describe('snapshots, restore and export', () => {
     }
   });
 
+  it('exports a chosen existing snapshot without taking a fresh one', () => {
+    insertBook('book-1', 'The Hobbit');
+    const existing = takeSnapshot(db, config, {
+      now: () => new Date('2026-11-10T12:00:00.000Z'),
+    });
+    db.prepare("UPDATE book_records SET title = 'Changed'").run();
+    const destination = path.join(dataDir, 'off-host', 'chosen.sqlite');
+
+    const exitCode = runExportCommand([existing, destination], config, {
+      db,
+      now: () => new Date('2026-11-10T13:00:00.000Z'),
+      log: () => {},
+      error: () => {},
+    });
+
+    expect(exitCode).toBe(0);
+    expect(listSnapshots(config)).toHaveLength(1);
+
+    const copy = openSnapshot(destination);
+    try {
+      const row = copy
+        .prepare('SELECT title FROM book_records WHERE join_id = ?')
+        .get('book-1') as { title: string };
+      expect(row.title).toBe('The Hobbit');
+    } finally {
+      copy.close();
+    }
+  });
+
   it('fires the catalogue scan, full enrichment and override import hooks', async () => {
     let scanned = 0;
-    const indexDeps: CatalogueIndexDeps = {
+    const indexDeps: CatalogueScanDeps = {
       fetchIndex: async () => [item('book-1', 'The Hobbit')],
       sampleSize: 0,
       onComplete: (result) => {
-        expect(result).toMatchObject({ mode: 'index', added: 1 });
+        expect(result).toMatchObject({ mode: 'scan', added: 1 });
         scanned += 1;
       },
     };
-    await refreshCatalogueIndex(db, indexDeps);
+    await scanCatalogue(db, indexDeps);
     expect(scanned).toBe(1);
 
     const adapter: EnrichmentAdapter = {

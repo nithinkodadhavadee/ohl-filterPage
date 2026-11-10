@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_ENRICHMENT_COOLDOWN_MS } from './config.js';
 import type { CrawlerHandle } from './crawler.js';
+import { errorMessage } from './util.js';
 
 export const LAST_FULL_ENRICHMENT_KEY = 'last_full_enrichment_at';
 
@@ -29,10 +30,6 @@ export interface StartupHandle {
   status: () => StartupStatus;
   done: Promise<void>;
   stop: () => Promise<void>;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function writeValue(db: DatabaseSync, key: string, value: string): void {

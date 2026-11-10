@@ -24,9 +24,9 @@ On an empty database the service performs a **First run**:
    `CYCLE_DELAY_SECONDS`, 30 by default).
 3. A full **Enrichment pass** runs in parallel with the Book sweep.
 
-There is no faster bootstrap. The first catalogue entries appear within
-minutes, and circulation figures fill in over roughly four and a half hours at
-the default pace. Scan, sweep and enrichment failures are logged and never stop
+First run uses the normal pace; there is no faster start. The first catalogue
+entries appear within minutes, and circulation figures fill in over roughly
+four and a half hours at the default pace. Scan, sweep and enrichment failures are logged and never stop
 the HTTP server; stored data keeps being served throughout.
 
 ## Startup catch-up
@@ -34,8 +34,9 @@ the HTTP server; stored data keeps being served throughout.
 Every start with a populated database follows the same catch-up sequence:
 
 1. A **Catalogue scan** detects added and removed book records. A book record
-   missing from Libib becomes **Hidden**; its rows, enrichment and Match
-   override are kept.
+   absent from the full Libib index becomes **Hidden**; its rows, enrichment and
+   Match override are kept. A record still in Libib but outside a capped Sample
+   is retained rather than hidden.
 2. The normal **Book sweep** resumes from its persisted cursor.
 3. A full **Enrichment pass** runs in parallel, covering every visible book
    record, including records that were already enriched.
@@ -55,16 +56,18 @@ next run; the Book sweep and stored data are unaffected.
 ## Commands
 
 All command arguments after `--` are passed through npm to the script. Commands
-that touch the database load a `.env` file from the working directory when one
-exists.
+that touch the database load `.env` and then `.env.local` from the working
+directory when they exist, so local development settings override shared ones.
 
 ### `npm run catalogue:scan`
 
 Runs one **Catalogue scan**: reads the full Libib Catalogue index, reconciles the
-**Crawl set** with what Libib reports, adds new records, marks missing records
-**Hidden**, caches covers and enriches new records on first sight. With
+**Crawl set** with what Libib reports, adds new records, marks records absent
+from Libib **Hidden**, caches covers and enriches new records on first sight. With
 `SAMPLE_SIZE` unset or `0` the Crawl set is the whole visible Collection; a
-positive value caps it. Takes a Snapshot on completion.
+positive value caps the Sample. The Sample limit decides what is stored and
+refreshed, not what is hidden: a stored record is Hidden only when it is absent
+from the full Libib index. Takes a Snapshot on completion.
 
 Arguments: none.
 
@@ -74,10 +77,12 @@ npm run catalogue:scan
 
 ### `npm run catalogue:resample`
 
-Re-picks the Crawl set from the current Libib Catalogue index instead of keeping
-the frozen one. Use it after the library adds titles, or to restore the sample
-count after records disappear. Missing records become Hidden rather than being
-deleted. Takes a Snapshot on completion.
+Re-picks the Sample from the current Libib Catalogue index instead of keeping
+the frozen one. Use it after the library adds titles, or to re-pick the Sample
+after records disappear. Records genuinely absent from Libib become Hidden;
+records still in Libib but outside the new Sample are kept. Switching sample
+sizes may therefore retain earlier stored records; resetting the database starts
+clean. Takes a Snapshot on completion.
 
 Arguments: none.
 
@@ -150,12 +155,15 @@ the server is up. The sequence is: stop the server, restore, start the server.
 npm run restore -- data/snapshots/catalogue-2026-11-10T12-00-00-000Z.sqlite
 ```
 
-### `npm run export -- <path>`
+### `npm run export -- <destination>` or `npm run export -- <snapshot> <destination>`
 
-Takes a fresh Snapshot and copies it to `<path>` for off-host backup.
+With one path, takes a fresh Snapshot and copies it to `<destination>` for
+off-host storage. With two paths, copies the chosen existing Snapshot instead.
+If the Snapshot is not found the command fails.
 
 ```sh
-npm run export -- /backups/catalogue-2026-11-10.sqlite
+npm run export -- /offsite/catalogue-2026-11-10.sqlite
+npm run export -- data/snapshots/catalogue-2026-11-10T12-00-00-000Z.sqlite /offsite/catalogue-2026-11-10.sqlite
 ```
 
 ### `npm run overrides:import -- <path>`
@@ -227,7 +235,7 @@ The pre-Pass 3 names are removed, not aliased: `index` became
 | `HOST`                            | `127.0.0.1`                               | Address the HTTP server binds to. The container sets `0.0.0.0`.          |
 | `PORT`                            | `3000`                                    | HTTP port.                                                              |
 | `DATA_DIR`                        | `./data`                                  | Directory holding the database, covers, snapshots and server lock.      |
-| `SAMPLE_SIZE`                     | `0` (whole visible Collection)            | Caps the Crawl set to the first N titles from A onward. Local sample: `50`. |
+| `SAMPLE_SIZE`                     | `0` (whole visible Collection)            | Caps the Sample to the first N titles from A onward. Set `50` in `.env.local` for local development. |
 | `CYCLE_DELAY_SECONDS`             | `30`                                      | Delay between Book sweep reads; also the default pacing for `sweep`.    |
 | `CRAWLER_ENABLED`                 | `true`                                    | Run the startup Catalogue scan, Book sweep and enrichment catch-up.     |
 | `ENRICH_COOLDOWN_SECONDS`         | `3600`                                    | Skip a startup Enrichment pass completed within this window.            |
@@ -239,23 +247,26 @@ The pre-Pass 3 names are removed, not aliased: `index` became
 | `LIBIB_BASE_URL`                  | `https://www.libib.com/u/openhouselibrary` | Override the Libib library base URL.                                    |
 | `LIBIB_LIBRARY_ID`                | `2677037`                                 | Override the Libib library id used by the Catalogue scan.               |
 
-## Local 50-book sample
+## Local 50-book Sample
 
-Local development works against the first 50 titles from A onward. Copy the
-committed example and leave it git-ignored:
+Local development works against the first 50 titles from A onward. Put local
+configuration in `.env.local`, which is git-ignored and is loaded by `npm run
+dev` and every CLI script after `.env`:
 
 ```sh
-cp .env.example .env
+cp .env.example .env.local
+# then set SAMPLE_SIZE=50 in .env.local
 ```
 
-`.env.example` sets `SAMPLE_SIZE=50`. The `dev` and CLI scripts load `.env` with
-Node's `--env-file-if-exists`, so no shell export is needed. Production leaves
-`SAMPLE_SIZE` unset (or `0`) to use the whole visible Collection.
+`.env.example` documents both modes and keeps `SAMPLE_SIZE=0` so that copying it
+to `.env` for Docker Compose never caps production. Compose reads `.env`, never
+`.env.local`. Production leaves `SAMPLE_SIZE` unset (or `0`) to use the whole
+visible Collection.
 
 ## Data layout
 
 Everything lives under `DATA_DIR` (default `./data`), which is the directory to
-bind-mount and back up:
+bind-mount and Snapshot:
 
 ```
 data/
@@ -264,7 +275,7 @@ data/
   catalogue.sqlite-shm      SQLite shared-memory file, when present
   covers/                   Cached cover images, named <joinId>-<hash>.<ext>
   snapshots/                Snapshots named catalogue-<timestamp>.sqlite
-  server.lock               PID of the running server; used to refuse double starts and live restores
+  server.lock               Server heartbeat (with PID for diagnostics); used to refuse double starts and live restores
 ```
 
 Covers are re-fetchable and therefore excluded from Snapshots. Snapshots contain
@@ -276,23 +287,32 @@ the database only, including enrichments and Match overrides.
   Snapshots are taken after a Catalogue scan, after a full Enrichment pass,
   after a Match override import, and on demand with `npm run snapshot`.
 - **Restore** replaces the live database from a Snapshot. Stop the server first,
-  restore, then start again:
+  restore, then start again. Restore refuses while the server heartbeat is fresh
+  (written every 10 seconds and considered fresh for 30 seconds); a stale lock is
+  cleaned automatically. The PID in the lock is kept for diagnostics.
 
   ```sh
   npm run restore -- data/snapshots/catalogue-2026-11-10T12-00-00-000Z.sqlite
   npm start
   ```
 
-- **Export** copies a fresh Snapshot off-host with `npm run export -- <path>`.
+- **Export** copies a fresh Snapshot off-host with `npm run export --
+  <destination>`, or copies a chosen existing Snapshot with `npm run export --
+  <snapshot> <destination>`.
 
 Recent circulation can be lost on Restore; it is cheap to sweep again. Hidden
 books, enrichments and Match overrides survive a Restore.
 
 ## Health and status
 
-- `GET /health` returns `{ "status": "ok" }`.
+- `GET /health` returns `{ status, database, crawler, startup, scheduled }`.
+  `status` is `ok` or `degraded`, and the endpoint answers `503` when the
+  database cannot be read or the crawler is in a hard error state. Normal
+  throttling backoff stays `ok`. The Docker healthcheck parses this body and
+  fails on anything other than `status: "ok"`.
 - `GET /api/status` reports catalogue freshness, Book sweep progress, backoff,
-  the last error and startup scan/enrichment progress.
+  the last error, startup scan/enrichment progress and the Scheduled catalogue
+  scan state.
 
 ## Deployment
 
@@ -348,9 +368,13 @@ Compose substitutes `${VARIABLE}` from the shell or from a `.env` file next to
 `docker-compose.yml` before the container starts. Those values become the
 container's environment when it is created; changing `.env` requires
 `docker compose up -d` to recreate the container. The running container does not
-mount the repository `.env`, and the image does not contain one. Inside the
-container the application always sees `DATA_DIR=/data`; the host-side
-`DATA_DIR` only chooses the bind-mount source.
+mount the repository `.env`, and the image does not contain one. `.env.local` is
+for local development only and is never read by Compose. Inside the container
+the application always sees `DATA_DIR=/data`; the host-side `DATA_DIR` only
+chooses the bind-mount source.
+
+`SAMPLE_SIZE` defaults to `0` (the whole visible Collection) in Compose. Keep it
+out of `.env` unless you deliberately want a capped Crawl set in production.
 
 `PORT` is fixed at `3000` inside the container and in the published mapping. To
 move it, change both sides of `ports` and keep them equal.
@@ -398,25 +422,33 @@ that should appear on the host.
 ### Healthcheck
 
 The image and Compose define a healthcheck that calls `GET /health` with Node's
-`fetch` (no `curl` is installed). It runs every 30 seconds with a 5-second
-timeout, a 30-second start period and three retries. `docker compose ps` shows
-the result. `/health` says only that the HTTP server is alive; `/api/status`
-reports catalogue freshness, Book sweep progress, backoff and the last error.
+`fetch` (no `curl` is installed) and fails unless the body reports
+`status: "ok"`. It runs every 30 seconds with a 5-second timeout, a 30-second
+start period and three retries. `docker compose ps` shows the result. The body
+covers the database, crawler, startup and Scheduled catalogue scan status.
+Normal backoff for Libib throttling does not fail the check; a hard crawler
+error does.
 
-### Backup and restore
+### Snapshot off-host and restore
 
 Take a Snapshot and copy it off the volume:
 
 ```sh
 docker compose exec app npm run snapshot
-cp data/snapshots/catalogue-2026-11-10T12-00-00-000Z.sqlite /backups/
+cp data/snapshots/catalogue-2026-11-10T12-00-00-000Z.sqlite /offsite/
 ```
 
 Or export directly to a path under the bind mount and copy that:
 
 ```sh
 docker compose exec app npm run export -- /data/exports/catalogue-2026-11-10.sqlite
-cp data/exports/catalogue-2026-11-10.sqlite /backups/
+cp data/exports/catalogue-2026-11-10.sqlite /offsite/
+```
+
+To move an existing Snapshot instead of taking a fresh one, pass both paths:
+
+```sh
+docker compose run --rm --no-deps app npm run export -- /data/snapshots/catalogue-2026-11-10T12-00-00-000Z.sqlite /data/exports/catalogue-2026-11-10.sqlite
 ```
 
 Snapshots contain the database only. Copy `data/covers/` separately if an
@@ -432,7 +464,7 @@ docker compose start app
 ```
 
 The restore command removes stale SQLite `-wal` and `-shm` files and refuses to
-run while a server lock shows a live process. Recent circulation can be lost on
+run while the server heartbeat is fresh. Recent circulation can be lost on
 Restore; it is cheap to sweep again. Hidden books, enrichments and Match
 overrides survive.
 

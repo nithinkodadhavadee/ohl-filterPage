@@ -10,6 +10,7 @@ import {
   type EnrichmentAdapterRegistry,
 } from './enrichment.js';
 import type { LibibDetail } from './libib-detail.js';
+import { errorMessage, sleep as defaultSleep } from './util.js';
 import { LibibRequestError } from './libib-index.js';
 import {
   backoffDelayForAttempt,
@@ -156,10 +157,6 @@ function classifyError(error: unknown): CrawlOutcome {
   return 'error';
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function needsFirstSightEnrichment(
   db: DatabaseSync,
   joinId: string,
@@ -299,30 +296,6 @@ export function getCrawlerStatus(
   if (options.startup) status.startup = options.startup;
   if (options.scheduled) status.scheduled = options.scheduled;
   return status;
-}
-
-function defaultSleep(
-  milliseconds: number,
-  signal?: AbortSignal,
-): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) {
-      resolve();
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, milliseconds);
-
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
 }
 
 function scheduleOptions(deps: CrawlerLoopDeps): ScheduleOptions {

@@ -12,6 +12,8 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       DATA_DIR: /data
+      # Defaults to the whole Collection. Keep SAMPLE_SIZE out of `.env` for
+      # production; local development sets it in `.env.local` instead.
       SAMPLE_SIZE: ${SAMPLE_SIZE:-0}
       CYCLE_DELAY_SECONDS: ${CYCLE_DELAY_SECONDS:-30}
       CRAWLER_ENABLED: ${CRAWLER_ENABLED:-true}
@@ -28,7 +30,7 @@ services:
         - CMD
         - node
         - -e
-        - fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))
+        - fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then((response) => response.json().then((body) => { if (!response.ok || body.status !== 'ok') process.exit(1); })).catch(() => process.exit(1))
       interval: 30s
       timeout: 5s
       start_period: 30s

@@ -12,9 +12,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { AppConfig } from './config.js';
 import {
   clearStaleServerLock,
-  isProcessAlive,
+  isServerRunning,
   readServerLockPid,
 } from './server-lock.js';
+import { errorMessage } from './util.js';
 
 export const SNAPSHOT_PREFIX = 'catalogue-';
 export const SNAPSHOT_EXTENSION = '.sqlite';
@@ -118,10 +119,19 @@ export function takeSnapshotSafely(
     options.log?.(`Snapshot written to ${snapshot}.`);
     return snapshot;
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    options.log?.(`Could not take snapshot: ${detail}`);
+    options.log?.(`Could not take snapshot: ${errorMessage(error)}`);
     return null;
   }
+}
+
+export function snapshotOnSuccess(
+  db: DatabaseSync,
+  config: AppConfig,
+  log?: (message: string) => void,
+): () => void {
+  return () => {
+    takeSnapshotSafely(db, config, { log });
+  };
 }
 
 export function exportSnapshot(source: string, destination: string): void {
@@ -143,10 +153,10 @@ export function restoreSnapshot(
     throw new Error(`Snapshot not found: ${source}`);
   }
 
-  const pid = readServerLockPid(config);
-  if (pid !== null && isProcessAlive(pid)) {
+  if (isServerRunning(config)) {
+    const pid = readServerLockPid(config);
     throw new Error(
-      `Refusing to restore: the server is running (PID ${pid}). ` +
+      `Refusing to restore: the server is running (PID ${pid ?? 'unknown'}). ` +
         'Stop the server, restore, then start it again.',
     );
   }

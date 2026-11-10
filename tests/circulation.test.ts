@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { refreshBookDetails } from '../src/server/circulation.js';
+import { sweepBookDetails } from '../src/server/circulation.js';
 import { loadConfig } from '../src/server/config.js';
 import { openDatabase } from '../src/server/db.js';
 import { LibibRequestError } from '../src/server/libib-index.js';
@@ -101,7 +101,7 @@ function fts(joinId: string): {
   };
 }
 
-describe('refreshBookDetails', () => {
+describe('sweepBookDetails', () => {
   it('upserts circulation, metadata and tags and records last refreshed time', async () => {
     setSample(['100', '101']);
     insertBook('100', 'Old Title', 'Old Author');
@@ -133,7 +133,7 @@ describe('refreshBookDetails', () => {
       }),
     };
 
-    const result = await refreshBookDetails(db, {
+    const result = await sweepBookDetails(db, {
       fetchDetail: async (joinId) => details[joinId],
       now: () => now,
       delayMs: 0,
@@ -200,12 +200,12 @@ describe('refreshBookDetails', () => {
       delayMs: 0,
     };
 
-    await refreshBookDetails(db, deps);
+    await sweepBookDetails(db, deps);
     const firstBook = book('100');
     const firstTags = tags('100');
     const firstFts = fts('100');
 
-    const result = await refreshBookDetails(db, deps);
+    const result = await sweepBookDetails(db, deps);
 
     expect(result).toEqual({ sampleSize: 1, refreshed: 1, skipped: 0 });
     expect(book('100')).toEqual(firstBook);
@@ -219,7 +219,7 @@ describe('refreshBookDetails', () => {
 
   it('skips missing samples and records returned without detail', async () => {
     const calls: string[] = [];
-    const missingSample = await refreshBookDetails(db, {
+    const missingSample = await sweepBookDetails(db, {
       fetchDetail: async (joinId) => {
         calls.push(joinId);
         return detail({ joinId });
@@ -233,7 +233,7 @@ describe('refreshBookDetails', () => {
     insertBook('100', 'Present');
     insertBook('101', 'Missing');
 
-    const result = await refreshBookDetails(db, {
+    const result = await sweepBookDetails(db, {
       fetchDetail: async (joinId) => {
         calls.push(joinId);
         return joinId === '100' ? detail({ joinId, title: 'Present' }) : null;
@@ -253,7 +253,7 @@ describe('refreshBookDetails', () => {
     for (const joinId of ['100', '101', '102']) insertBook(joinId, joinId);
     const sleeps: number[] = [];
 
-    await refreshBookDetails(db, {
+    await sweepBookDetails(db, {
       fetchDetail: async (joinId) => detail({ joinId, title: joinId }),
       now: () => new Date('2026-11-10T12:00:00.000Z'),
       delayMs: 250,
@@ -271,7 +271,7 @@ describe('refreshBookDetails', () => {
     insertBook('101', 'Second');
     const calls: string[] = [];
 
-    const error = await refreshBookDetails(db, {
+    const error = await sweepBookDetails(db, {
       fetchDetail: async (joinId) => {
         calls.push(joinId);
         throw new LibibRequestError(429, 'Libib refused rate');

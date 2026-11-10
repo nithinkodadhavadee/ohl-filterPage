@@ -119,8 +119,12 @@ A Catalogue scan triggered on a timer to detect added and removed book records.
 _Avoid_: Poll, poller, index poll
 
 **Crawl set**:
-The set of book records the Book sweep covers. In production it is the whole Collection; locally it may be a capped sample.
-_Avoid_: Sample, inventory
+The set of book records the Book sweep covers. In production it is the whole Collection; locally it may be a Sample.
+_Avoid_: Inventory
+
+**Sample**:
+A deliberately capped Crawl set used for local development, chosen by the `SAMPLE_SIZE` environment variable. A Sample limits what a Catalogue scan stores and refreshes, not what exists in Libib: switching sample sizes may retain earlier stored records, and resetting the database starts clean.
+_Avoid_: Fixture set, subset
 
 **Snapshot**:
 A consistent copy of the catalogue database, taken so data can be restored without re-scanning or re-enriching.

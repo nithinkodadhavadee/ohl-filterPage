@@ -4,10 +4,10 @@ import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  refreshCatalogueIndex,
-  resampleCatalogueIndex,
-  type CatalogueIndexDeps,
-} from '../src/server/catalogue-index.js';
+  scanCatalogue,
+  resampleCatalogue,
+  type CatalogueScanDeps,
+} from '../src/server/catalogue-scan.js';
 import { loadConfig } from '../src/server/config.js';
 import { crawlOne } from '../src/server/crawler.js';
 import { openDatabase } from '../src/server/db.js';
@@ -329,7 +329,7 @@ describe('first-sight enrichment', () => {
     index: LibibIndexItem[],
     adapter: EnrichmentAdapter,
     now = new Date('2026-11-10T10:00:00.000Z'),
-  ): CatalogueIndexDeps {
+  ): CatalogueScanDeps {
     return {
       fetchIndex: async () => index,
       adapters: registry(adapter),
@@ -341,26 +341,26 @@ describe('first-sight enrichment', () => {
     const adapter = fakeAdapter();
     const firstIndex = [item('101', 'Abundance'), item('102', 'Beloved')];
 
-    await refreshCatalogueIndex(db, indexDeps(firstIndex, adapter));
+    await scanCatalogue(db, indexDeps(firstIndex, adapter));
 
     expect(adapter.searches).toEqual(['Abundance', 'Beloved']);
     for (const joinId of ['101', '102']) {
       expect(enrichmentRow(joinId)).toMatchObject({ status: 'enriched' });
     }
 
-    await refreshCatalogueIndex(db, indexDeps(firstIndex, adapter));
+    await scanCatalogue(db, indexDeps(firstIndex, adapter));
 
     expect(adapter.searches).toEqual(['Abundance', 'Beloved']);
   });
 
   it('enriches records newly added by a resample', async () => {
     const adapter = fakeAdapter();
-    await refreshCatalogueIndex(
+    await scanCatalogue(
       db,
       indexDeps([item('101', 'Abundance')], adapter),
     );
 
-    await resampleCatalogueIndex(
+    await resampleCatalogue(
       db,
       indexDeps(
         [item('101', 'Abundance'), item('103', 'Aardvark')],

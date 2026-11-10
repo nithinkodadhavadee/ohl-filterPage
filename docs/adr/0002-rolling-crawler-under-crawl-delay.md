@@ -10,4 +10,4 @@ Libib's robots.txt disallows `/u/` and sets `Crawl-delay: 30`, while holds and a
 
 ## Consequences
 
-- The first-run bootstrap is a deliberate one-time exception to this pacing; see ADR-0006.
+- The original first-run exception was deliberate; see ADR-0006.

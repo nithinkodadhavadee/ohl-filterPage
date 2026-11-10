@@ -73,11 +73,23 @@ describe('seed command', () => {
 });
 
 describe('GET /health', () => {
-  it('reports ok', async () => {
+  it('reports the app, database and background-status health', async () => {
     const response = await app.inject({ method: 'GET', url: '/health' });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ status: 'ok' });
+    expect(response.json()).toEqual({
+      status: 'ok',
+      database: 'ok',
+      crawler: {
+        enabled: false,
+        healthy: true,
+        backoff: false,
+        lastOutcome: null,
+        lastError: null,
+      },
+      startup: null,
+      scheduled: null,
+    });
   });
 });
 

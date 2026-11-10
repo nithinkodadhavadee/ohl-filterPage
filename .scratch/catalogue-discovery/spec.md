@@ -47,7 +47,7 @@ v1 is a **local-only prototype**, run on the Librarian's machine to validate the
 
 ### Out of v1, or delayed
 
-These were deferred past v1 and are now decided in Pass 3 at the end of this document: bootstrap and snapshots, Docker/Compose/deployment, the Scheduled catalogue scan, and infinite scroll. Browser tests and accessibility audits remain deferred. Everything under Out of Scope stays out.
+These were deferred past v1 and are now decided in Pass 3 at the end of this document: First run and snapshots, Docker/Compose/deployment, the Scheduled catalogue scan, and infinite scroll. Browser tests and accessibility audits remain deferred. Everything under Out of Scope stays out.
 
 ### Needs discussion before implementation
 
@@ -171,7 +171,7 @@ These describe the target product. The v1 Scope above determines which of them s
 - One TypeScript application delivered in a single Docker image: an HTTP server, a SQLite database, a built React frontend served as static assets, and the rolling crawler running in the same process group.
 - Docker Compose file with a named volume for the database and cover cache, and environment configuration for port, data directory, cycle delay, index-poll interval, and backoff bounds.
 - No authentication. No write endpoints exposed to Patrons. Administrative actions are CLI commands run through the container.
-- The same image carries a fixture-seeding command, a one-time bootstrap mode, and snapshot/restore commands.
+- The same image carries a fixture-seeding command, a one-time First-run mode, and snapshot/restore commands.
 - Single-context domain documentation: `CONTEXT.md` at the root and `docs/adr/`.
 
 ### Data model
@@ -205,13 +205,13 @@ These describe the target product. The v1 Scope above determines which of them s
 - Cycle progress is persisted so a restart resumes rather than restarting the Crawl cycle.
 - The scheduling decision is a pure function of the previous outcome and the current backoff state, so it can be tested without sleeping.
 
-### Bootstrap, fixtures and recovery
+### First run, fixtures and recovery
 
 - A fresh database is loaded with fixtures by a seed command; development and the HTTP-seam tests never contact Libib.
-- When no catalogue exists in production, a one-time bootstrap mode reads the index, then one detail request per book record at roughly two seconds, writing each record as it arrives. It is resumable from a persisted cursor and is the only deliberate exception to the rolling crawler's pacing.
-- After bootstrap and after each completed Crawl cycle, the app writes a consistent snapshot of the database into a snapshots directory on the volume, retaining a configurable number of recent snapshots (default seven).
+- When no catalogue exists in production, First run reads the index, then one detail request per book record at roughly two seconds, writing each record as it arrives. It is resumable from a persisted cursor and is the only deliberate exception to the rolling crawler's pacing.
+- After First run and after each completed Crawl cycle, the app writes a consistent snapshot of the database into a snapshots directory on the volume, retaining a configurable number of recent snapshots (default seven).
 - A restore command replaces the live database from a chosen snapshot and refuses to run while the crawler is active.
-- An export command writes a snapshot to an arbitrary destination for off-volume backup. Snapshots contain the database only — including enrichments and Match overrides — because cached covers are content-addressed and cheap to re-fetch.
+- An export command writes a snapshot to an arbitrary destination for off-host storage. Snapshots contain the database only — including enrichments and Match overrides — because cached covers are content-addressed and cheap to re-fetch.
 
 ### Enrichment
 
@@ -262,7 +262,7 @@ Pin the Libib index and detail wire formats and the Open Library search, ratings
 
 ### Seam 3: CLI commands
 
-Run the enrichment and CSV commands against a temporary database with fake adapters. Assert: a book is enriched once and not again unless commanded; an override takes precedence and survives re-enrichment; export-unmatched produces the documented CSV columns; failure states are recorded so a later failed-only run retries them. Also assert the seed command produces a working dataset, and that snapshot then restore round-trips enrichments and Match overrides. Bootstrap resume is asserted by interrupting a fake-adapter run and confirming it continues from the persisted cursor.
+Run the enrichment and CSV commands against a temporary database with fake adapters. Assert: a book is enriched once and not again unless commanded; an override takes precedence and survives re-enrichment; export-unmatched produces the documented CSV columns; failure states are recorded so a later failed-only run retries them. Also assert the seed command produces a working dataset, and that snapshot then restore round-trips enrichments and Match overrides. First-run resume is asserted by interrupting a fake-adapter run and confirming it continues from the persisted cursor.
 
 ### Crawler scheduling
 
@@ -329,17 +329,17 @@ Pass 3 turns the pass-2 prototype into the deployable service and supersedes the
 
 ### Lifecycle
 
-- **First run** on an empty database: a Catalogue scan, then the Book sweep and a full Enrichment pass in parallel at the normal 30-second pacing. No faster bootstrap.
+- **First run** on an empty database: a Catalogue scan, then the Book sweep and a full Enrichment pass in parallel at the normal 30-second pacing. No faster start.
 - **Every startup, populated database:** a Catalogue scan, then a full Enrichment pass and the normal Book sweep in parallel. Stored data is served throughout with its refreshed timestamps.
 - **Startup cooldown:** a full Enrichment pass is skipped if one completed within the last hour; the timestamp is persisted so restart loops cannot repeat it.
 - **Scheduled catalogue scan:** every 24 hours by default, measured from start and configurable (0 disables). It triggers a full Enrichment pass. On failure it retries with backoff, then waits for the next run.
-- Enrichment passes cover every visible book, including already-enriched ones; Match overrides always win.
+- Enrichment passes cover every visible book, including already-enriched ones; Match overrides always win. A completed manual `enrich --all` records the same cooldown timestamp as a startup or Scheduled pass.
 
 ### Data
 
-- `SAMPLE_SIZE`: 0 or unset means the whole Collection; local development sets 50 in a git-ignored `.env`. The Crawl set is the visible book records.
-- A book record missing from a Catalogue scan becomes **Hidden**: excluded from the Crawl set, Enrichment, API and page, with its rows and Match override kept. A returning record is unhidden and refreshed normally.
-- **Snapshots** are consistent copies of the SQLite database. They are taken after a Catalogue scan, after a full Enrichment pass, after a Match override import, and on demand; the last 10 are kept. Restore requires the app to be stopped; Export copies a snapshot off-host. Cached covers are excluded.
+- `SAMPLE_SIZE`: 0 or unset means the whole Collection; local development sets 50 in a git-ignored `.env.local`, while Compose reads only `.env` and defaults to 0. The Sample is the visible book records it stores and refreshes.
+- A book record absent from the full Libib index during a Catalogue scan becomes **Hidden**: excluded from the Crawl set, Enrichment, API and page, with its rows and Match override kept. A record still in Libib but outside a new Sample is retained rather than hidden. A returning record is unhidden and refreshed normally. Switching sample sizes may retain earlier stored records; resetting the database starts clean.
+- **Snapshots** are consistent copies of the SQLite database. They are taken after a Catalogue scan, after a full Enrichment pass, after a Match override import, and on demand; the last 10 are kept. Restore requires the app to be stopped (a fresh server heartbeat blocks it); Export copies a fresh snapshot by default or a chosen existing one off-host. Cached covers are excluded.
 
 ### Scale and UI
 

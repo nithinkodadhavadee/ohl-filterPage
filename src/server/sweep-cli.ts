@@ -1,10 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
-import { refreshBookDetails, type BookRefreshResult } from './circulation.js';
+import { sweepBookDetails, type BookSweepResult } from './circulation.js';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db.js';
 import { createLibibAdapter } from './libib.js';
 import type { LibibDetail } from './libib-detail.js';
+import { errorMessage } from './util.js';
+import { isVisibleBook } from './visibility.js';
 
 const USAGE = 'Usage: npm run sweep [-- --book <joinId>] [--delay <ms>]';
 
@@ -72,14 +74,7 @@ export interface SweepCliDeps {
 
 export interface SweepCliResult {
   exitCode: number;
-  result?: BookRefreshResult;
-}
-
-function isVisibleBook(db: DatabaseSync, joinId: string): boolean {
-  const row = db
-    .prepare('SELECT 1 AS found FROM book_records WHERE join_id = ? AND hidden = 0')
-    .get(joinId);
-  return row !== undefined;
+  result?: BookSweepResult;
 }
 
 export async function runSweepCli(
@@ -93,7 +88,7 @@ export async function runSweepCli(
   try {
     args = parseSweepArgs(argv);
   } catch (caught) {
-    error(caught instanceof Error ? caught.message : String(caught));
+    error(errorMessage(caught));
     return { exitCode: 1 };
   }
 
@@ -105,7 +100,7 @@ export async function runSweepCli(
   const delayMs = args.delayMs ?? deps.defaultDelayMs;
 
   try {
-    const result = await refreshBookDetails(deps.db, {
+    const result = await sweepBookDetails(deps.db, {
       fetchDetail: deps.fetchDetail,
       now: deps.now,
       delayMs,
@@ -137,8 +132,7 @@ export async function runSweepCli(
 
     return { exitCode: 0, result };
   } catch (caught) {
-    const detail = caught instanceof Error ? caught.message : String(caught);
-    error(`Could not sweep book circulation: ${detail}`);
+    error(`Could not sweep book circulation: ${errorMessage(caught)}`);
     return { exitCode: 1 };
   }
 }

@@ -6,7 +6,7 @@ import { loadConfig } from './config.js';
 import { parseCsv } from './csv.js';
 import { openDatabase } from './db.js';
 import type { EnrichmentAdapterRegistry } from './enrichment.js';
-import { takeSnapshotSafely } from './snapshot.js';
+import { snapshotOnSuccess } from './snapshot.js';
 
 const USAGE = 'Usage: npm run overrides:import -- <path>';
 const REQUIRED_COLUMNS = ['join_id', 'source', 'source_id_or_url'];
@@ -277,9 +277,7 @@ if (isMain) {
     const result = runOverrideImportCli(process.argv.slice(2), {
       db,
       adapters,
-      onImported: () => {
-        takeSnapshotSafely(db, config, { log: (line) => console.error(line) });
-      },
+      onImported: snapshotOnSuccess(db, config, (line) => console.error(line)),
     });
     process.exitCode = result.exitCode;
   } finally {

@@ -12,7 +12,13 @@ import {
   type EnrichmentAdapter,
   type EnrichmentOutcome,
 } from './enrichment.js';
-import { takeSnapshotSafely } from './snapshot.js';
+import { snapshotOnSuccess } from './snapshot.js';
+import { recordFullEnrichment } from './startup.js';
+import { errorMessage, sleep as defaultSleep } from './util.js';
+import {
+  isHiddenBook,
+  visibleBookIds,
+} from './visibility.js';
 
 export interface EnrichCliDeps {
   db: DatabaseSync;
@@ -48,30 +54,6 @@ export interface EnrichCliResult {
 
 const USAGE =
   'Usage: npm run enrich -- --id <joinId> | --all | --unmatched | --failed';
-
-function defaultSleep(
-  milliseconds: number,
-  signal?: AbortSignal,
-): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) {
-      resolve();
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, milliseconds);
-
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
 
 export function parseEnrichArgs(argv: readonly string[]): EnrichSelection {
   let selection: EnrichSelection | null = null;
@@ -131,26 +113,9 @@ interface EnrichmentStatusRow {
   status: string;
 }
 
-function allBookIds(db: DatabaseSync): string[] {
-  return (
-    db
-      .prepare(
-        'SELECT join_id FROM book_records WHERE hidden = 0 ORDER BY join_id',
-      )
-      .all() as unknown as { join_id: string }[]
-  ).map((entry) => entry.join_id);
-}
-
 function crawlSetIds(db: DatabaseSync): string[] {
   const sample = getSampleJoinIds(db);
-  return sample !== null ? sample : allBookIds(db);
-}
-
-function isHidden(db: DatabaseSync, joinId: string): boolean {
-  const row = db
-    .prepare('SELECT 1 AS found FROM book_records WHERE join_id = ? AND hidden = 1')
-    .get(joinId);
-  return row !== undefined;
+  return sample !== null ? sample : visibleBookIds(db);
 }
 
 function enrichmentStatuses(db: DatabaseSync): Map<string, string> {
@@ -165,7 +130,7 @@ export function selectEnrichTargets(
   selection: EnrichSelection,
 ): string[] {
   if (selection.kind === 'id') {
-    return isHidden(db, selection.joinId) ? [] : [selection.joinId];
+    return isHiddenBook(db, selection.joinId) ? [] : [selection.joinId];
   }
 
   const ids = crawlSetIds(db);
@@ -252,7 +217,7 @@ export async function runEnrichCli(
         now: deps.now,
       });
     } catch (caught) {
-      error(caught instanceof Error ? caught.message : String(caught));
+      error(errorMessage(caught));
       if (selection.kind === 'id') return { exitCode: 1 };
       summary.failed += 1;
       continue;
@@ -287,6 +252,9 @@ export async function runEnrichCli(
   };
 
   if (selection.kind === 'all') {
+    if (!deps.signal?.aborted) {
+      recordFullEnrichment(deps.db, deps.now?.() ?? new Date());
+    }
     await deps.onComplete?.(result);
   }
 
@@ -312,9 +280,7 @@ if (isMain) {
       db,
       adapters,
       delayMs,
-      onComplete: () => {
-        takeSnapshotSafely(db, config, { log: (line) => console.error(line) });
-      },
+      onComplete: snapshotOnSuccess(db, config, (line) => console.error(line)),
     });
     process.exitCode = result.exitCode;
   } finally {
