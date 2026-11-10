@@ -18,10 +18,11 @@ export interface EnrichCliDeps {
   adapter?: EnrichmentAdapter;
   adapters?: EnrichmentAdapterRegistry;
   delayMs?: number;
-  sleep?: (milliseconds: number) => Promise<void>;
+  sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
   now?: () => Date;
   log?: (line: string) => void;
   error?: (line: string) => void;
+  signal?: AbortSignal;
 }
 
 export type EnrichSelection =
@@ -46,8 +47,29 @@ export interface EnrichCliResult {
 const USAGE =
   'Usage: npm run enrich -- --id <joinId> | --all | --unmatched | --failed';
 
-const defaultSleep = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
+function defaultSleep(
+  milliseconds: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, milliseconds);
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 export function parseEnrichArgs(argv: readonly string[]): EnrichSelection {
   let selection: EnrichSelection | null = null;
@@ -218,7 +240,8 @@ export async function runEnrichCli(
   const outcomes: EnrichmentOutcome[] = [];
 
   for (let index = 0; index < joinIds.length; index += 1) {
-    if (index > 0 && delayMs > 0) await sleep(delayMs);
+    if (deps.signal?.aborted) break;
+    if (index > 0 && delayMs > 0) await sleep(delayMs, deps.signal);
 
     const joinId = joinIds[index];
     let outcome: EnrichmentOutcome;

@@ -10,12 +10,14 @@ export interface AppConfig {
   crawlerEnabled: boolean;
   crawlerCycleDelayMs: number;
   crawlerMaxBackoffMs: number;
+  enrichmentCooldownMs: number;
 }
 
 export interface ConfigOverrides {
   port?: number;
   dataDir?: string;
   sampleSize?: number;
+  enrichmentCooldownMs?: number;
 }
 
 const DEFAULT_PORT = 3000;
@@ -23,11 +25,14 @@ const DEFAULT_DATA_DIR = './data';
 const DEFAULT_SAMPLE_SIZE = 0;
 const DEFAULT_CYCLE_DELAY_SECONDS = 30;
 const DEFAULT_MAX_BACKOFF_SECONDS = 900;
+const DEFAULT_ENRICHMENT_COOLDOWN_SECONDS = 3600;
 
 export const DEFAULT_CRAWLER_CYCLE_DELAY_MS =
   DEFAULT_CYCLE_DELAY_SECONDS * 1000;
 export const DEFAULT_CRAWLER_MAX_BACKOFF_MS =
   DEFAULT_MAX_BACKOFF_SECONDS * 1000;
+export const DEFAULT_ENRICHMENT_COOLDOWN_MS =
+  DEFAULT_ENRICHMENT_COOLDOWN_SECONDS * 1000;
 
 function parsePort(value: string | undefined): number {
   if (!value) return DEFAULT_PORT;
@@ -78,6 +83,12 @@ export function loadConfig(overrides: ConfigOverrides = {}): AppConfig {
       process.env.CRAWLER_MAX_BACKOFF_SECONDS,
       DEFAULT_CRAWLER_MAX_BACKOFF_MS,
     ),
+    enrichmentCooldownMs:
+      overrides.enrichmentCooldownMs ??
+      parseSeconds(
+        process.env.ENRICH_COOLDOWN_SECONDS,
+        DEFAULT_ENRICHMENT_COOLDOWN_MS,
+      ),
   };
 }
 

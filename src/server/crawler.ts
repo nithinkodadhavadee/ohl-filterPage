@@ -17,6 +17,7 @@ import {
   type CrawlOutcome,
   type ScheduleOptions,
 } from './crawler-schedule.js';
+import type { StartupStatus } from './startup.js';
 
 export type CrawlStepOutcome = 'idle' | CrawlOutcome;
 
@@ -48,6 +49,7 @@ export interface CrawlerStatus {
   };
   lastOutcome: CrawlOutcome | null;
   lastError: string | null;
+  startup?: StartupStatus;
 }
 
 export interface CrawlStepDeps {
@@ -261,14 +263,14 @@ export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
 
 export function getCrawlerStatus(
   db: DatabaseSync,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; startup?: StartupStatus } = {},
 ): CrawlerStatus {
   const sampleIds = getSampleJoinIds(db);
   const total = sampleIds?.length ?? 0;
   const state = readCrawlerState(db);
   const position = total === 0 ? 0 : Math.min(state.cursor, total);
 
-  return {
+  const status: CrawlerStatus = {
     enabled: options.enabled ?? false,
     lastIndexRefreshedAt: getLastIndexRefreshedAt(db),
     cycle: {
@@ -287,6 +289,9 @@ export function getCrawlerStatus(
     lastOutcome: state.lastOutcome,
     lastError: state.lastError,
   };
+
+  if (options.startup) status.startup = options.startup;
+  return status;
 }
 
 function defaultSleep(
