@@ -17,6 +17,7 @@ import {
   type CrawlOutcome,
   type ScheduleOptions,
 } from './crawler-schedule.js';
+import type { ScheduledScanStatus } from './scheduled-scan.js';
 import type { StartupStatus } from './startup.js';
 
 export type CrawlStepOutcome = 'idle' | CrawlOutcome;
@@ -50,6 +51,7 @@ export interface CrawlerStatus {
   lastOutcome: CrawlOutcome | null;
   lastError: string | null;
   startup?: StartupStatus;
+  scheduled?: ScheduledScanStatus;
 }
 
 export interface CrawlStepDeps {
@@ -263,7 +265,11 @@ export async function crawlOne(deps: CrawlStepDeps): Promise<CrawlStepResult> {
 
 export function getCrawlerStatus(
   db: DatabaseSync,
-  options: { enabled?: boolean; startup?: StartupStatus } = {},
+  options: {
+    enabled?: boolean;
+    startup?: StartupStatus;
+    scheduled?: ScheduledScanStatus;
+  } = {},
 ): CrawlerStatus {
   const sampleIds = getSampleJoinIds(db);
   const total = sampleIds?.length ?? 0;
@@ -291,6 +297,7 @@ export function getCrawlerStatus(
   };
 
   if (options.startup) status.startup = options.startup;
+  if (options.scheduled) status.scheduled = options.scheduled;
   return status;
 }
 
