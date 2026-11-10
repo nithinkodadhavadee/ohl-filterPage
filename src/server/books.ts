@@ -14,6 +14,7 @@ import {
   type SortDirection,
   type SortField,
 } from '../shared/contract.js';
+import { buildAuthorFacets } from '../shared/authors.js';
 import { enrichmentSourceLabel } from '../shared/enrichment.js';
 import { VISIBLE_BOOK_SQL } from './visibility.js';
 
@@ -515,7 +516,9 @@ export function getBooks(
   const terms = tokenize(queryText);
   const hasSearch = terms.length > 0;
 
-  const authorFilter = options.author?.trim().toLowerCase() ?? '';
+  const authorFilter = (options.authors ?? [])
+    .map((author) => author.trim().toLowerCase())
+    .filter(Boolean);
   const tagFilter = (options.tags ?? []).filter(Boolean);
   const subjectFilter = (options.subjects ?? []).filter(Boolean);
   const holdFilter = options.holds ?? [];
@@ -539,11 +542,9 @@ export function getBooks(
     db.prepare(`SELECT * FROM book_records WHERE ${VISIBLE_BOOK_SQL}`),
   ).filter(
     (record) => {
-      if (
-        authorFilter &&
-        !record.author?.toLowerCase().includes(authorFilter)
-      ) {
-        return false;
+      if (authorFilter.length > 0) {
+        const author = record.author?.toLowerCase() ?? '';
+        if (!authorFilter.some((name) => author.includes(name))) return false;
       }
       if (
         holdFilter.length > 0 &&
@@ -649,14 +650,12 @@ export function getFacets(db: DatabaseSync): FacetsResponse {
       ORDER BY t.tag COLLATE NOCASE
     `),
   );
-  const authors = rows<FacetCount>(
-    db.prepare(`
-      SELECT author AS value, COUNT(*) AS count
-      FROM book_records
-      WHERE ${VISIBLE_BOOK_SQL} AND author IS NOT NULL AND TRIM(author) <> ''
-      GROUP BY author
-      ORDER BY author COLLATE NOCASE
-    `),
+  const authors = buildAuthorFacets(
+    rows<{ join_id: string; author: string | null }>(
+      db.prepare(
+        `SELECT join_id, author FROM book_records WHERE ${VISIBLE_BOOK_SQL}`,
+      ),
+    ).map((record) => ({ joinId: record.join_id, author: record.author })),
   );
   const subjects = rows<FacetCount>(
     db.prepare(`

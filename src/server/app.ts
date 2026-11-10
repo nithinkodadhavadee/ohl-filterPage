@@ -195,7 +195,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       seed?: string;
       limit?: string;
       offset?: string;
-      author?: string;
+      author?: string | string[];
       tag?: string | string[];
       subject?: string | string[];
       holds?: string | string[];
@@ -222,7 +222,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       sort: parseSort(request.query.sort),
       direction: parseDirection(request.query.direction),
       seed: request.query.seed,
-      author: request.query.author,
+      authors: toArray(request.query.author).filter(Boolean),
       tags: toArray(request.query.tag).filter(Boolean),
       subjects: toArray(request.query.subject).filter(Boolean),
       holds: toArray(request.query.holds).filter(isHoldBucket),
