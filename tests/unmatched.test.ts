@@ -31,12 +31,14 @@ beforeEach(async () => {
 
   const insertEnrichment = db.prepare(
     `INSERT INTO enrichment (
-       join_id, source, rating_average, rating_count, page_count, status, enriched_at
-     ) VALUES (?, 'openlibrary', NULL, 0, NULL, ?, '2026-11-02T00:00:00.000Z')`,
+       join_id, source, source_id, rating_average, rating_count, page_count,
+       status, enriched_at
+     ) VALUES (?, 'openlibrary', ?, NULL, 0, NULL, ?,
+       '2026-11-02T00:00:00.000Z')`,
   );
-  insertEnrichment.run('matched-empty', 'enriched');
-  insertEnrichment.run('unmatched', 'unmatched');
-  insertEnrichment.run('failed', 'failed');
+  insertEnrichment.run('matched-empty', '/works/OL1W', 'enriched');
+  insertEnrichment.run('unmatched', null, 'unmatched');
+  insertEnrichment.run('failed', null, 'failed');
 
   db.close();
 
@@ -62,16 +64,21 @@ describe('unmatched signal', () => {
     expect(matched?.rating).toBeNull();
     expect(matched?.subjects).toEqual([]);
     expect(matched?.enrichmentStatus).toBe('enriched');
+    expect(matched?.enrichmentSourceUrl).toBe(
+      'https://openlibrary.org/works/OL1W',
+    );
     expect(isUnmatchedBook(matched!)).toBe(false);
     expect(hasNoEnrichmentData(matched!.enrichmentStatus)).toBe(false);
 
     const unmatched = body.books.find((book) => book.joinId === 'unmatched');
     expect(unmatched?.enrichmentStatus).toBe('unmatched');
+    expect(unmatched?.enrichmentSourceUrl).toBeNull();
     expect(isUnmatchedBook(unmatched!)).toBe(true);
     expect(hasNoEnrichmentData(unmatched!.enrichmentStatus)).toBe(true);
 
     const failed = body.books.find((book) => book.joinId === 'failed');
     expect(failed?.enrichmentStatus).toBe('failed');
+    expect(failed?.enrichmentSourceUrl).toBeNull();
     expect(isUnmatchedBook(failed!)).toBe(false);
     expect(hasNoEnrichmentData(failed!.enrichmentStatus)).toBe(true);
 

@@ -121,6 +121,8 @@ describe('GET /api/books', () => {
       pageCount: 328,
       rating: { average: 4.28, count: 449, lowSample: false },
       enrichmentSource: 'Open Library',
+      enrichmentSourceUrl:
+        'https://openlibrary.org/works/OL1168083W',
       enrichedAt: '2026-11-02T10:00:00.000Z',
       libibUrl: 'https://www.libib.com/u/openhouselibrary?solo=167806440',
     });
@@ -206,6 +208,7 @@ describe('GET /api/books', () => {
     expect(book.subjects).toEqual([]);
     expect(book.pageCount).toBeNull();
     expect(book.enrichmentSource).toBeNull();
+    expect(book.enrichmentSourceUrl).toBeNull();
     expect(book.author).toBeNull();
     expect(book.tags).toEqual(['nonfiction', 'true crime']);
   });

@@ -566,6 +566,48 @@ button.badge {
   font-weight: 700;
 }
 
+.enrichment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+}
+
+.enrichment-grid div {
+  padding: 0.5rem 0.55rem;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.enrichment-grid dt {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.enrichment-grid dd {
+  margin: 0.15rem 0 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.detail-link {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.detail-link:hover {
+  filter: brightness(1.08);
+}
+
+.detail-link:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .chip-list {
   display: flex;
   flex-wrap: wrap;

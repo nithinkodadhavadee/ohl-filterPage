@@ -14,6 +14,7 @@ import {
   type SortField,
   type UnmatchedFilter,
 } from '../shared/contract';
+import { enrichmentSourceDisplayName } from '../shared/enrichment';
 import {
   BADGE_COPY,
   ENRICHMENT_HINT_COPY,
@@ -230,6 +231,55 @@ function EnrichmentHint({
   );
 }
 
+function BookEnrichment({ book }: { book: Book }) {
+  const sourceName = enrichmentSourceDisplayName(book.enrichmentSource);
+  const enriched = book.enrichmentStatus === 'enriched';
+
+  return (
+    <section className="detail-section" aria-labelledby="detail-enrichment">
+      <h3 id="detail-enrichment">Enrichment</h3>
+      {enriched ? (
+        <>
+          <dl className="enrichment-grid">
+            <div>
+              <dt>Source</dt>
+              <dd>{sourceName}</dd>
+            </div>
+            <div>
+              <dt>Enriched</dt>
+              <dd>{formatDate(book.enrichedAt)}</dd>
+            </div>
+          </dl>
+          {book.enrichmentSourceUrl ? (
+            <p>
+              <a
+                className="detail-link"
+                href={book.enrichmentSourceUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View matched record on {sourceName}
+              </a>
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="muted">
+          {book.enrichmentStatus === 'unmatched'
+            ? book.enrichmentSource
+              ? `No matching record was found in ${sourceName}.`
+              : 'No matching record was found.'
+            : book.enrichmentStatus === 'failed'
+              ? book.enrichmentSource
+                ? `Enrichment from ${sourceName} has not completed.`
+                : 'Enrichment has not completed.'
+              : 'This book has not been enriched yet.'}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function RatingBadge({
   book,
   precision = 2,
@@ -265,7 +315,7 @@ function RatingBadge({
   return <span className={className ?? 'muted'}>{emptyLabel}</span>;
 }
 
-function BookDetail({
+export function BookDetail({
   book,
   permalink,
 }: {
@@ -402,6 +452,8 @@ function BookDetail({
             <p className="muted">No subjects.</p>
           )}
         </section>
+
+        <BookEnrichment book={book} />
 
         <footer className="detail-footer">
           <p className="muted">
