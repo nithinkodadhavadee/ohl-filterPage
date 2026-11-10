@@ -40,6 +40,7 @@ Verification: `typecheck`, `build`, 173 tests green; live API check of `?solo=`,
 - [x] 25 Containerisation and deployment — static verification only; Docker build and live healthcheck not run (Docker unavailable)
 - [x] 26 Canonical CLI and operations documentation
 - [x] 28 Persist Catalogue scan records before downloading covers (found during first container test; records now appear before covers finish)
+- [x] 29 Graceful container shutdown (Node runs directly as PID 1; stop exits 0 and releases the server lock)
 
 Verification: `typecheck`, `build`, 231 tests green. Deployment files statically validated; the first real `docker compose up` and Cloudflare Tunnel test happen on the Nix server.
 
