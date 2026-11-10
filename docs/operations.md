@@ -362,6 +362,17 @@ through with a default. Stopping the container or replacing the image keeps the
 volume; deleting `data/` or the `DATA_DIR` directory is the only way to lose
 catalogue state.
 
+The container runs Node directly, so it is PID 1 and receives Docker's stop
+signal itself. On `docker compose stop` the server logs `Received SIGTERM,
+shutting down`, aborts the Scheduled catalogue scan, Startup tasks and Book
+sweep, closes the database, removes `server.lock` and exits 0. An in-flight
+Catalogue scan is abandoned rather than awaited; records it already committed
+stay in the database, and the next start resumes the normal startup catch-up.
+If closing or stopping a task fails the error is logged, the lock is still
+removed and the process still exits 0. A second signal during shutdown does not
+start another close. `docker compose start` then reuses the same volume and
+resumes from the persisted crawl cursor.
+
 ### Environment injection
 
 Compose substitutes `${VARIABLE}` from the shell or from a `.env` file next to

@@ -76,7 +76,9 @@ export function startStartup(deps: StartupDeps): StartupHandle {
 
   let phase: StartupPhase = 'scanning';
   let inProgress = true;
+  let scanFinished = false;
   let sweep: CrawlerHandle | null = null;
+  let sweepDone: Promise<void> | null = null;
 
   const done = (async () => {
     try {
@@ -84,6 +86,7 @@ export function startStartup(deps: StartupDeps): StartupHandle {
     } catch (error) {
       logger(`Startup catalogue scan failed: ${errorMessage(error)}`);
     }
+    scanFinished = true;
 
     if (controller.signal.aborted) {
       inProgress = false;
@@ -93,7 +96,7 @@ export function startStartup(deps: StartupDeps): StartupHandle {
 
     try {
       sweep = deps.startSweep();
-      void sweep.done.catch((error) => {
+      sweepDone = sweep.done.catch((error) => {
         logger(`Book sweep stopped unexpectedly: ${errorMessage(error)}`);
       });
     } catch (error) {
@@ -129,9 +132,21 @@ export function startStartup(deps: StartupDeps): StartupHandle {
     done,
     async stop() {
       controller.abort();
-      sweep?.stop();
-      await done;
-      await sweep?.done;
+      try {
+        sweep?.stop();
+      } catch (error) {
+        logger(`Could not stop the Book sweep: ${errorMessage(error)}`);
+      }
+
+      if (scanFinished) {
+        try {
+          await done;
+        } catch (error) {
+          logger(`Startup stopped with an error: ${errorMessage(error)}`);
+        }
+      }
+
+      await sweepDone;
     },
   };
 }

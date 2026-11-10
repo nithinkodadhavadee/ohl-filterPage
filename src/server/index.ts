@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { acquireServerLock, releaseServerLock } from './server-lock.js';
+import { createShutdownHandler } from './shutdown.js';
 
 const config = loadConfig();
 acquireServerLock(config);
@@ -14,12 +15,13 @@ const app = await buildApp({
   throw error;
 });
 
-const shutdown = async (signal: string): Promise<void> => {
-  app.log.info(`Received ${signal}, shutting down`);
-  await app.close();
-  releaseServerLock(config);
-  process.exit(0);
-};
+const shutdown = createShutdownHandler({
+  close: () => app.close(),
+  releaseLock: () => releaseServerLock(config),
+  log: (message) => app.log.info(message),
+  logError: (error) => app.log.error(error),
+  exit: (code) => process.exit(code),
+});
 
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
