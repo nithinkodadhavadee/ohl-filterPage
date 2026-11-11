@@ -7,6 +7,9 @@ defines the vocabulary used here: **Catalogue scan**, **Book sweep**,
 **Enrichment pass**, **First run**, **Scheduled catalogue scan**, **Snapshot**,
 **Restore**, **Export**, **Crawl set** and **Hidden book**.
 
+See also: [Docker and deployment guide](docker.md) and the
+[AI-assisted development workflow](ai-workflow.md).
+
 ## Requirements
 
 - Node 26
@@ -320,7 +323,8 @@ The service runs as one container. The image carries the application and the
 development fixtures needed by `seed`, but no catalogue database, cached covers
 or snapshots; those live in a host directory bind-mounted at `/data`. The
 container serves plain HTTP on a loopback-published port. TLS and public routing
-belong to a host-run Cloudflare Tunnel, never to the container.
+belong to a host-run Tailscale Funnel or Cloudflare Tunnel, never to the
+container.
 
 ### Build and run with Docker
 
@@ -494,6 +498,21 @@ docker compose up -d
 To roll back, check out the previous revision, rebuild and recreate the same way.
 If a release requires a data change, restore the Snapshot taken before the
 upgrade.
+
+### Tailscale Funnel
+
+The container publishes plain HTTP on `127.0.0.1:3000`, so the host can expose it
+without certificates:
+
+```sh
+sudo tailscale funnel --bg 3000
+tailscale funnel status
+```
+
+Funnel serves `https://<machine>.<tailnet>.ts.net/` and proxies to
+`http://127.0.0.1:3000`; Cloudflare is not required. Funnel is public internet.
+For tailnet-only access, use `sudo tailscale serve --bg 3000` instead. See the
+[exposure section of the Docker guide](docker.md#exposing-the-site).
 
 ### Cloudflare Tunnel ingress
 
