@@ -372,7 +372,7 @@ These entries are the decision record. Exact acceptance criteria and API/schema 
 
 ## Pass 5 — Planned
 
-Tickets 35–40. Nothing implemented. Items 37 and 38 need a decision before implementation; the rest are ready.
+Tickets 35–41. Nothing implemented. Items 37 and 38 need a decision before implementation; ticket 41's copy needs maintainer review; the rest are ready.
 
 1. **Back to top button — ticket 35.** A control appears after scrolling and returns smoothly to the top.
 2. **Header links to Libib — ticket 36.** The "Open House Library" label opens `https://www.libib.com/u/openhouselibrary` in a new tab.
@@ -380,3 +380,4 @@ Tickets 35–40. Nothing implemented. Items 37 and 38 need a decision before imp
 4. **Copy-link button — ticket 38.** Decide whether to remove it or fix it. The clipboard API requires a secure context, so it silently fails over plain HTTP on the LAN/Tailscale address.
 5. **Remove the "Not yet swept" message — ticket 39.** Remove the message from the detail view; the sweep state stays in the API and `/status`.
 6. **Include low-sample ratings by default — ticket 40.** The "Include low sample ratings" checkbox is checked by default.
+7. **GitHub link and Terms page — ticket 41.** Footer links to the repository and a public `/terms` page covering what the site is, data sources and freshness, no accounts or tracking, external links, no warranty, corrections and contact, licence status and last-updated date. Draft copy for maintainer review; no licence is asserted (the licence decision lives in `BACKLOG.md`).

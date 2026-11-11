@@ -68,6 +68,7 @@ Verification: `typecheck`, `build`, 290 tests green. Unscheduled ideas live in `
 - [ ] 38 Fix or remove the copy-link button — discussion first; clipboard needs a secure context
 - [ ] 39 Remove the "Not yet swept" message
 - [ ] 40 Include low-sample ratings by default
+- [ ] 41 GitHub link and Terms page — copy needs maintainer review
 
 ## Superseded
 

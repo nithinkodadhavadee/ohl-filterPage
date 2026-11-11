@@ -146,4 +146,5 @@ you could only validate the files statically.
 ## License
 
 No license has been chosen for this repository yet. Do not add one without the
-maintainer's agreement.
+maintainer's agreement. The decision is tracked in
+[BACKLOG.md](.scratch/catalogue-discovery/BACKLOG.md).
