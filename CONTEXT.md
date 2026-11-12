@@ -135,3 +135,45 @@ _Avoid_: Backup, dump
 **Badge**:
 A computed label attached to a book record for display — Available, Unavailable, Low sample, or unmatched. Not authored by the Librarian.
 _Avoid_: Tag, label, status
+
+## Analytics
+
+**Site analytics**:
+Aggregate, cookieless observations about how Patrons use the public pages.
+_Avoid_: Tracking, telemetry, user analytics
+
+**Visit**:
+One load of a public page (`/` or `/status`) by an anonymous browser.
+_Avoid_: Pageview, hit, session
+
+**Unique visitor**:
+An approximate count of distinct daily visitor hashes; not a person and not a persistent identifier.
+_Avoid_: User, unique user, visitor ID
+
+**Bot**:
+A request identified by User-Agent as an automated client, counted separately and excluded from Patron metrics.
+_Avoid_: Crawler, spider
+
+**Search**:
+A catalogue query with a text term, recorded once when it settles.
+_Avoid_: Query, keyword search
+
+**Zero-result search**:
+A Search that returned no book records.
+_Avoid_: Failed search, empty search
+
+**Filter use**:
+Applying a filter facet to narrow the catalogue.
+_Avoid_: Filter event, facet click
+
+**Book view**:
+Opening a book record's detail view.
+_Avoid_: Detail view, book click
+
+**Outbound click**:
+A click that leaves the site for Libib, GitHub or the Terms page.
+_Avoid_: Exit click, external link
+
+**Librarian report**:
+An on-demand HTML and CSV export of detailed Site analytics, shared privately with the Librarian.
+_Avoid_: Dashboard, export

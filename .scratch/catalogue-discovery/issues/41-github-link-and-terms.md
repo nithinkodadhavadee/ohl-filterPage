@@ -9,8 +9,10 @@ page. The page explains, in plain language:
 - that circulation and Holds are informational and borrowing happens in Libib;
 - that data comes from Libib and Open Library and may be delayed, with the
   visible refreshed timestamps;
-- that there are no accounts and the app sets no tracking cookies (server and
-  network logs may still record requests);
+- that there are no accounts and the app sets no tracking cookies;
+- that cookieless aggregate Site analytics are collected: no cookies, no stored
+  IPs, no persistent identifiers, approximate daily unique visitors, and raw
+  Search text only in a private Librarian report; link to `/analytics`;
 - that external sites have their own terms;
 - that the service is best-effort with no warranty and is not affiliated with
   Libib or Open Library;
@@ -29,6 +31,10 @@ tab with `rel="noopener noreferrer"`.
 legal guarantees, or copy boilerplate that does not match this read-only site.
 The licence decision remains in `BACKLOG.md`, not a ticket.
 
+The analytics disclosure is required by ticket 43; the two land together.
+
+- [ ] The Terms copy discloses cookieless aggregate analytics and links to
+      `/analytics`, without claiming a licence.
 - [ ] The footer links to GitHub and Terms; GitHub opens in a new tab.
 - [ ] `/terms` renders on direct load and from the footer, in production and dev.
 - [ ] The page covers the sections listed above, without claiming a licence.

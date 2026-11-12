@@ -64,11 +64,15 @@ Verification: `typecheck`, `build`, 290 tests green. Unscheduled ideas live in `
 
 - [ ] 35 Back to top button
 - [ ] 36 Header link to Libib
-- [ ] 37 Review the sweep audit CSV — discussion first
-- [ ] 38 Fix or remove the copy-link button — discussion first; clipboard needs a secure context
+- [ ] 37 Sweep audit as a cumulative worklist with an attempted column — decided
+- [ ] 38 Copy-link with an HTTP-safe fallback — decided
 - [ ] 39 Remove the "Not yet swept" message
 - [ ] 40 Include low-sample ratings by default
-- [ ] 41 GitHub link and Terms page — copy needs maintainer review
+- [ ] 41 GitHub link, Terms page and analytics disclosure — copy needs maintainer review
+- [ ] 42 Publish on all interfaces on host port 3002 — decided; ADR-0012 supersedes ADR-0008
+- [ ] 43 Site analytics — decided; ADR-0011
+
+Decisions: ADR-0011 (Site analytics), ADR-0012 (publish on all interfaces). ADR-0008 is superseded.
 
 ## Superseded
 
@@ -76,4 +80,4 @@ Verification: `typecheck`, `build`, 290 tests green. Unscheduled ideas live in `
 
 ## Backlog
 
-Unscheduled ideas live in `BACKLOG.md` (matching improvements, fallback sources, deployment).
+Unscheduled ideas live in `BACKLOG.md` (matching improvements, fallback sources, licence). No backlog items were promoted into Pass 5.

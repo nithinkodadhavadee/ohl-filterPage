@@ -1,11 +1,25 @@
 # 37: Review the sweep audit CSV
 
-**What to build:** Decide what the sweep audit CSV is for. Today it lists every book with no successful sweep; never-attempted books have empty `last_attempt_at`, `outcome` and `reason`, which is correct but makes the file look like a bare book list. Options: keep it as a "no successful sweep" worklist and document that empty means never attempted; restrict it to failed/skipped after a completed cycle; add an explicit `attempted` / `never attempted` column; or remove it if the /status page covers the need.
+**What to build:** Keep the audit as a cumulative **"no successful sweep"**
+worklist and make its meaning explicit. The ledger holds one row per book
+(`last_attempt_at`, `outcome`, `reason`, `last_success_at`) and is upserted on
+every attempt, so the CSV reflects the latest attempt per book, not a history of
+cycles. A book that failed days ago still appears until it succeeds; a book that
+has never been attempted appears with blank attempt fields.
 
-**Blocked by:** None (discussion first)
+Add an explicit `attempted` / `never-attempted` column rather than relying on
+empty cells, and document that older failures superseded by a later attempt are
+not retained here — per-cycle history belongs to the run log. Update the
+`/status` link and ticket 32 wording to match.
 
-**Status:** needs-triage
+**Blocked by:** None (pass 5)
 
-- [ ] Decide the purpose of the audit and who reads it.
-- [ ] Decide the columns and whether never-attempted rows belong.
-- [ ] Update the audit output, /status link and ticket 32 wording to match.
+**Status:** ready-for-agent
+
+- [x] Decide the purpose of the audit and who reads it: a cumulative worklist for
+      the Librarian of visible books with no successful sweep.
+- [x] Decide the columns: add `attempted` / `never-attempted`; keep join id,
+      title, author, last attempt, outcome and reason.
+- [ ] Update the audit output, `/status` link and ticket 32 wording to match.
+- [ ] Tests cover a never-attempted book, a failed book and a book that
+      succeeded after failing.

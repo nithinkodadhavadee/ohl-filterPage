@@ -348,7 +348,13 @@ Pass 3 turns the pass-2 prototype into the deployable service and supersedes the
 ### Deployment
 
 - One container, no catalogue data in the image. `DATA_DIR` (default `./data`) is bind-mounted at `/data` and holds the database, covers and snapshots.
-- The container serves plain HTTP on a loopback port with a healthcheck. A single host-run `cloudflared` instance, shared across projects, routes the site's hostname to that port; Cloudflare provides TLS.
+- The container serves plain HTTP on container port `3000`, published on all interfaces at host port `3002`, with a healthcheck. A host-run reverse proxy (Tailscale Funnel now, Cloudflare later) routes the site's hostname to port `3002` and terminates TLS.
+
+### Site analytics
+
+- First-party and cookieless: no third-party script, no cookies, no consent banner and no stored IPs. Collection is server-side from requests the app already receives, with a small first-party beacon for outbound clicks, share use, filter resets and scroll depth. Unique visitors are an approximate daily count from a salted IP+User-Agent hash with a daily-rotated salt.
+- A public `/analytics` page shows aggregates only: visits, approximate unique visitors, humans vs Bots, devices/browser/OS, referrers, most-viewed books and event totals. No Search text.
+- Raw Search text and detailed breakdowns are produced on demand as an HTML and CSV report for the Librarian. Analytics tables live in `catalogue.sqlite`, so Snapshots, Exports and Restores include them. Raw retention defaults to forever and is configurable. See ADR-0011.
 
 ### Commands
 
@@ -356,7 +362,7 @@ Canonical CLI: `catalogue:scan`, `catalogue:resample`, `sweep` (`--book`, `--del
 
 ### Decisions recorded
 
-ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots). ADR-0005 and ADR-0006 are superseded.
+ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-0009 (enrichment cadence), ADR-0010 (snapshots), ADR-0011 (Site analytics), ADR-0012 (publish on all interfaces). ADR-0005, ADR-0006 and ADR-0008 are superseded.
 
 ## Pass 4 — Implemented
 
@@ -372,12 +378,14 @@ These entries are the decision record. Exact acceptance criteria and API/schema 
 
 ## Pass 5 — Planned
 
-Tickets 35–41. Nothing implemented. Items 37 and 38 need a decision before implementation; ticket 41's copy needs maintainer review; the rest are ready.
+Tickets 35–43. Nothing implemented. 37 and 38 are decided; 41's copy needs maintainer review; 42 moves publishing to host port 3002; 43 adds Site analytics. The rest are ready.
 
 1. **Back to top button — ticket 35.** A control appears after scrolling and returns smoothly to the top.
 2. **Header links to Libib — ticket 36.** The "Open House Library" label opens `https://www.libib.com/u/openhouselibrary` in a new tab.
-3. **Sweep audit CSV review — ticket 37.** Decide whether the audit is a "no successful sweep" worklist or a failed/skipped list; empty `last_attempt_at`/`outcome`/`reason` currently means never attempted.
-4. **Copy-link button — ticket 38.** Decide whether to remove it or fix it. The clipboard API requires a secure context, so it silently fails over plain HTTP on the LAN/Tailscale address.
+3. **Sweep audit worklist — ticket 37.** Keep the cumulative "no successful sweep" list, add an explicit attempted/never-attempted column, and document that it reflects the latest attempt per book; per-cycle history stays in the run log.
+4. **Copy-link — ticket 38.** Keep the button and add an HTTP-safe fallback with visible success/failure feedback.
 5. **Remove the "Not yet swept" message — ticket 39.** Remove the message from the detail view; the sweep state stays in the API and `/status`.
 6. **Include low-sample ratings by default — ticket 40.** The "Include low sample ratings" checkbox is checked by default.
-7. **GitHub link and Terms page — ticket 41.** Footer links to the repository and a public `/terms` page covering what the site is, data sources and freshness, no accounts or tracking, external links, no warranty, corrections and contact, licence status and last-updated date. Draft copy for maintainer review; no licence is asserted (the licence decision lives in `BACKLOG.md`).
+7. **GitHub link and Terms page — ticket 41.** Footer links to the repository and a public `/terms` page covering what the site is, data sources and freshness, no accounts or tracking, cookieless aggregate Site analytics with a `/analytics` link, external links, no warranty, corrections and contact, licence status and last-updated date. Draft copy for maintainer review; no licence is asserted (the licence decision lives in `BACKLOG.md`).
+8. **Publish on all interfaces — ticket 42.** Compose publishes `0.0.0.0:3002` to container port `3000`; Tailscale Funnel and a future Cloudflare ingress target port `3002`. ADR-0012 supersedes ADR-0008's loopback binding.
+9. **Site analytics — ticket 43.** First-party, cookieless collection with no stored IPs: server-side capture of Visits, Searches, Zero-result searches, Filter use, sort use, Book views, 404s and API errors, referrer, device/browser/OS and a UA-based human-vs-Bot split, plus a small beacon for outbound clicks, share use, filter resets and scroll depth. Public `/analytics` shows aggregates without Search text; raw Search text lives in an on-demand HTML and CSV report for the Librarian. Analytics tables live in `catalogue.sqlite`; raw retention defaults to forever and is configurable. App logs redact IPs and query strings.
