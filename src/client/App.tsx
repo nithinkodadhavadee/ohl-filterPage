@@ -33,6 +33,7 @@ import {
 } from './filter-ui';
 import { formatDateTime } from './format';
 import { appendCataloguePage } from './paging';
+import { SiteFooter } from './SiteFooter';
 import { describeSweep } from './sweep-state';
 import type { CrawlerStatus, ViewMode } from './types';
 import {
@@ -1587,10 +1588,7 @@ export function App() {
         </button>
       ) : null}
 
-      <footer ref={footerRef} className="site-footer">
-        <p className="muted">Open House Library catalogue</p>
-        <a href="/status">System status</a>
-      </footer>
+      <SiteFooter label="Open House Library catalogue" ref={footerRef} />
 
       <dialog
         ref={dialogRef}

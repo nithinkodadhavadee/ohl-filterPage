@@ -186,6 +186,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       reply.sendFile('index.html');
     app.get('/status', sendClient);
     app.get('/status/', sendClient);
+    app.get('/terms', sendClient);
+    app.get('/terms/', sendClient);
   }
 
   app.addHook('onClose', async () => {
