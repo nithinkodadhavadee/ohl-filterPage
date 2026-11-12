@@ -171,7 +171,7 @@ Opening a book record's detail view.
 _Avoid_: Detail view, book click
 
 **Outbound click**:
-A click that leaves the site for Libib, GitHub or the Terms page.
+A click on a link that takes a Patron out of the catalogue — to Libib, GitHub, or the Terms page.
 _Avoid_: Exit click, external link
 
 **Librarian report**:

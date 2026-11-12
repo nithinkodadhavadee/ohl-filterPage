@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { RETENTION_FOREVER } from '../shared/analytics.js';
 
 export interface AppConfig {
   host: string;
@@ -38,7 +39,7 @@ const DEFAULT_MAX_BACKOFF_SECONDS = 900;
 const DEFAULT_ENRICHMENT_COOLDOWN_SECONDS = 3600;
 const DEFAULT_CATALOGUE_SCAN_INTERVAL_SECONDS = 86400;
 const DEFAULT_SNAPSHOT_RETAIN = 10;
-const DEFAULT_ANALYTICS_RETENTION_DAYS = 0;
+const DEFAULT_ANALYTICS_RETENTION_DAYS = RETENTION_FOREVER;
 
 export const DEFAULT_CRAWLER_CYCLE_DELAY_MS =
   DEFAULT_CYCLE_DELAY_SECONDS * 1000;

@@ -1,5 +1,5 @@
 import type { Ref } from 'react';
-import { trackOutbound } from './analytics';
+import { recordOutboundClick } from './analytics';
 
 export const REPOSITORY_URL =
   'https://github.com/nithinkodadhavadee/ohl-filterPage';
@@ -18,14 +18,14 @@ export function SiteFooter({
         <a href="/">Catalogue</a>
         <a href="/status">System status</a>
         <a href="/analytics">Analytics</a>
-        <a href="/terms" onClick={() => trackOutbound('terms')}>
+        <a href="/terms" onClick={() => recordOutboundClick('terms')}>
           Terms
         </a>
         <a
           href={REPOSITORY_URL}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => trackOutbound('github')}
+          onClick={() => recordOutboundClick('github')}
         >
           GitHub
         </a>

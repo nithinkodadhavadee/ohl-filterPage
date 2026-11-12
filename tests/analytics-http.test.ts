@@ -147,6 +147,33 @@ describe('search and filter capture', () => {
     expect(eventTotal(result, 'sort')).toBe(1);
     expect(eventTotal(result, 'filter')).toBe(1);
   });
+
+  it('records a non-default sort on the first request and dedupes repeats', async () => {
+    await app.inject({
+      method: 'GET',
+      url: '/api/books?offset=0&sort=year&direction=desc',
+      headers: { 'user-agent': HUMAN_UA },
+    });
+    await app.inject({
+      method: 'GET',
+      url: '/api/books?offset=0&sort=year&direction=desc',
+      headers: { 'user-agent': HUMAN_UA },
+    });
+
+    const result = await summary();
+    expect(eventTotal(result, 'sort')).toBe(1);
+  });
+
+  it('does not treat a first default-sort load as sort use', async () => {
+    await app.inject({
+      method: 'GET',
+      url: '/api/books?offset=0&sort=title&direction=asc',
+      headers: { 'user-agent': HUMAN_UA },
+    });
+
+    const result = await summary();
+    expect(eventTotal(result, 'sort')).toBe(0);
+  });
 });
 
 describe('book views and errors', () => {

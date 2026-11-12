@@ -1,3 +1,5 @@
+export const RETENTION_FOREVER = 0;
+
 export const ANALYTICS_EVENT_KINDS = [
   'visit',
   'search',

@@ -101,6 +101,31 @@ CREATE TABLE IF NOT EXISTS analytics_meta (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS analytics_daily (
+  day TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  is_bot INTEGER NOT NULL DEFAULT 0,
+  path TEXT NOT NULL DEFAULT '',
+  device TEXT NOT NULL DEFAULT '',
+  browser TEXT NOT NULL DEFAULT '',
+  os TEXT NOT NULL DEFAULT '',
+  referrer_host TEXT NOT NULL DEFAULT '',
+  filters TEXT NOT NULL DEFAULT '',
+  sort TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  zero_results INTEGER NOT NULL DEFAULT 0,
+  events INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (
+    day, kind, is_bot, path, device, browser, os, referrer_host,
+    filters, sort, detail, zero_results
+  )
+);
+
+CREATE TABLE IF NOT EXISTS analytics_daily_visitors (
+  day TEXT PRIMARY KEY,
+  unique_visitors INTEGER NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS books_fts USING fts5(
   join_id UNINDEXED,
   title,
@@ -121,4 +146,6 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_kind_time
   ON analytics_events(kind, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_day
   ON analytics_events(day);
+CREATE INDEX IF NOT EXISTS idx_analytics_daily_kind_day
+  ON analytics_daily(kind, day);
 `;

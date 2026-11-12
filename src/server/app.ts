@@ -8,12 +8,10 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createAdapterRegistry } from './adapters.js';
 import {
-  parseUserAgent,
   purgeExpiredAnalytics,
   readAnalyticsSummary,
-  recordAnalyticsEvent,
-  visitorHashFor,
 } from './analytics.js';
+import { createAnalyticsCapture } from './analytics-http.js';
 import {
   getBook,
   getBooks,
@@ -60,22 +58,18 @@ import {
   type StartupHandle,
   type StartupTaskContext,
 } from './startup.js';
-import {
-  defaultDirectionFor,
-  isHoldBucket,
-  isSortField,
-  normalizeUnmatchedFilter,
-  type SortDirection,
-  type SortField,
-  type UnmatchedFilter,
-} from '../shared/contract.js';
+import { isHoldBucket } from '../shared/contract.js';
 import { isRunKind } from '../shared/run-log.js';
 import {
-  OUTBOUND_DESTINATIONS,
-  SCROLL_QUARTILES,
-  SHARE_OUTCOMES,
-  type AnalyticsBeaconEvent,
-} from '../shared/analytics.js';
+  parseBoolean,
+  parseDirection,
+  parseInteger,
+  parseNumber,
+  parseSort,
+  parseUnmatched,
+  toArray,
+  type BooksQueryParams,
+} from './query-params.js';
 
 export interface StartupOverrides {
   scan?: () => Promise<unknown>;
@@ -109,209 +103,6 @@ export interface BuildAppOptions {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-function parseInteger(
-  value: string | undefined,
-  fallback: number,
-  min: number,
-  max: number,
-): number {
-  if (value === undefined) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    return fallback;
-  }
-  return parsed;
-}
-
-function parseSort(value: string | undefined): SortField | undefined {
-  if (value === undefined) return undefined;
-  return isSortField(value) ? value : undefined;
-}
-
-function parseNumber(
-  value: string | undefined,
-  min: number,
-  max: number,
-): number | undefined {
-  if (value === undefined || value.trim() === '') return undefined;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function parseDirection(value: string | undefined): SortDirection | undefined {
-  return value === 'asc' || value === 'desc' ? value : undefined;
-}
-
-function parseUnmatched(value: string | undefined): UnmatchedFilter {
-  return normalizeUnmatchedFilter(value);
-}
-
-function toArray(value: string | string[] | undefined): string[] {
-  if (value === undefined) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
-function parseBoolean(value: string | string[] | undefined): boolean {
-  const first = Array.isArray(value) ? value[0] : value;
-  return first === '1' || first === 'true' || first === 'yes';
-}
-
-interface BooksQueryParams {
-  q?: string;
-  sort?: string;
-  direction?: string;
-  seed?: string;
-  limit?: string;
-  offset?: string;
-  author?: string | string[];
-  tag?: string | string[];
-  subject?: string | string[];
-  holds?: string | string[];
-  available_only?: string | string[];
-  rating_min?: string;
-  include_low_sample?: string | string[];
-  pages_min?: string;
-  pages_max?: string;
-  unmatched?: string;
-}
-
-function headerString(
-  value: string | string[] | undefined,
-): string | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
-}
-
-function requestPath(request: FastifyRequest): string {
-  const url = request.raw.url ?? request.url ?? '/';
-  return url.split('?')[0] || '/';
-}
-
-const ASSET_PATH = /\.(?:js|css|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|eot|json|txt|xml)$/i;
-
-function isAssetPath(pathname: string): boolean {
-  return (
-    pathname.startsWith('/covers/') ||
-    pathname.startsWith('/assets/') ||
-    ASSET_PATH.test(pathname)
-  );
-}
-
-function referrerHost(request: FastifyRequest): string | null {
-  const referer = headerString(request.headers.referer);
-  if (!referer) return null;
-  try {
-    return new URL(referer).hostname || null;
-  } catch {
-    return null;
-  }
-}
-
-function filterDescriptor(
-  query: BooksQueryParams,
-): Record<string, unknown> | null {
-  const descriptor: Record<string, unknown> = {};
-
-  const authors = toArray(query.author).filter(Boolean);
-  if (authors.length > 0) descriptor.authors = authors;
-  const tags = toArray(query.tag).filter(Boolean);
-  if (tags.length > 0) descriptor.tags = tags;
-  const subjects = toArray(query.subject).filter(Boolean);
-  if (subjects.length > 0) descriptor.subjects = subjects;
-  const holds = toArray(query.holds).filter(isHoldBucket);
-  if (holds.length > 0) descriptor.holds = holds;
-  if (parseBoolean(query.available_only)) descriptor.availableOnly = true;
-  const ratingMin = parseNumber(query.rating_min, 0, 5);
-  if (ratingMin !== undefined) descriptor.ratingMin = ratingMin;
-  if (query.include_low_sample !== undefined) {
-    descriptor.includeLowSample = parseBoolean(query.include_low_sample);
-  }
-  const pagesMin = parseNumber(
-    query.pages_min,
-    0,
-    Number.MAX_SAFE_INTEGER,
-  );
-  if (pagesMin !== undefined) descriptor.pagesMin = pagesMin;
-  const pagesMax = parseNumber(
-    query.pages_max,
-    0,
-    Number.MAX_SAFE_INTEGER,
-  );
-  if (pagesMax !== undefined) descriptor.pagesMax = pagesMax;
-  const unmatched = parseUnmatched(query.unmatched);
-  if (unmatched !== 'all') descriptor.unmatched = unmatched;
-
-  return Object.keys(descriptor).length > 0 ? descriptor : null;
-}
-
-function sortSignatureFor(query: BooksQueryParams): string {
-  const sort = parseSort(query.sort) ?? 'title';
-  const direction = parseDirection(query.direction) ?? defaultDirectionFor(sort);
-  return `${sort}:${direction}`;
-}
-
-const BEACON_KEYS = new Set(['event', 'destination', 'result', 'quartile']);
-
-function parseBeaconBody(body: unknown): AnalyticsBeaconEvent | null {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  const record = body as Record<string, unknown>;
-  if (Object.keys(record).some((key) => !BEACON_KEYS.has(key))) return null;
-
-  switch (record.event) {
-    case 'outbound':
-      if (
-        typeof record.destination !== 'string' ||
-        !(OUTBOUND_DESTINATIONS as readonly string[]).includes(
-          record.destination,
-        ) ||
-        record.result !== undefined ||
-        record.quartile !== undefined
-      ) {
-        return null;
-      }
-      return {
-        event: 'outbound',
-        destination: record.destination as AnalyticsBeaconEvent['destination'],
-      };
-    case 'share':
-      if (
-        typeof record.result !== 'string' ||
-        !(SHARE_OUTCOMES as readonly string[]).includes(record.result) ||
-        record.destination !== undefined ||
-        record.quartile !== undefined
-      ) {
-        return null;
-      }
-      return {
-        event: 'share',
-        result: record.result as AnalyticsBeaconEvent['result'],
-      };
-    case 'scroll':
-      if (
-        typeof record.quartile !== 'number' ||
-        !(SCROLL_QUARTILES as readonly number[]).includes(record.quartile) ||
-        record.destination !== undefined ||
-        record.result !== undefined
-      ) {
-        return null;
-      }
-      return {
-        event: 'scroll',
-        quartile: record.quartile as AnalyticsBeaconEvent['quartile'],
-      };
-    case 'filter_reset':
-      if (record.destination !== undefined || record.result !== undefined || record.quartile !== undefined) {
-        return null;
-      }
-      return { event: 'filter_reset' };
-    default:
-      return null;
-  }
-}
-
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = loadConfig({ dataDir: options.dataDir, port: options.port });
   const db = openDatabase(config);
@@ -326,123 +117,24 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const startupEnabled = options.startup ?? crawlerEnabled;
   const now = options.now ?? (() => new Date());
   const analyticsSettleMs = options.analyticsSettleMs ?? 800;
-  const pendingSearches = new Map<
-    string,
-    { timer: ReturnType<typeof setTimeout>; write: () => void }
-  >();
-  const lastFilters = new Map<string, string>();
-  const lastSorts = new Map<string, string>();
-  const beaconBuckets = new Map<string, number[]>();
-  const BEACON_WINDOW_MS = 60_000;
-  const BEACON_MAX_EVENTS = 30;
-  const MAX_TRACKED_CLIENTS = 5000;
-
-  const rememberClient = <T>(map: Map<string, T>, key: string, value: T) => {
-    if (map.size > MAX_TRACKED_CLIENTS && !map.has(key)) map.clear();
-    map.set(key, value);
-  };
   let startup: StartupHandle | null = null;
   let scheduled: ScheduledScanHandle | null = null;
 
   purgeExpiredAnalytics(db, config.analyticsRetentionDays, now());
 
-  const analyticsContext = (request: FastifyRequest) => {
-    const userAgent = headerString(request.headers['user-agent']);
-    const info = parseUserAgent(userAgent);
-    const occurredAt = now();
-    return {
-      occurredAt,
-      userAgent,
-      info,
-      visitorHash: visitorHashFor(db, request.ip, userAgent, occurredAt),
-    };
-  };
-
-  const recordBookView = (request: FastifyRequest, joinId: string): void => {
-    const context = analyticsContext(request);
-    recordAnalyticsEvent(db, {
-      kind: 'book_view',
-      occurredAt: context.occurredAt,
-      visitorHash: context.visitorHash,
-      isBot: context.info.bot,
-      device: context.info.device,
-      browser: context.info.browser,
-      os: context.info.os,
-      path: requestPath(request),
-      detail: joinId,
-    });
-  };
-
-  const scheduleSearch = (key: string, write: () => void): void => {
-    const pending = pendingSearches.get(key);
-    if (pending) clearTimeout(pending.timer);
-    if (analyticsSettleMs <= 0) {
-      pendingSearches.delete(key);
-      write();
-      return;
-    }
-    const timer = setTimeout(() => {
-      pendingSearches.delete(key);
-      write();
-    }, analyticsSettleMs);
-    timer.unref?.();
-    pendingSearches.set(key, { timer, write });
-  };
-
-  const beaconAllowed = (key: string): boolean => {
-    const timestamp = now().getTime();
-    const recent = (beaconBuckets.get(key) ?? []).filter(
-      (entry) => timestamp - entry < BEACON_WINDOW_MS,
-    );
-    if (recent.length >= BEACON_MAX_EVENTS) {
-      rememberClient(beaconBuckets, key, recent);
-      return false;
-    }
-    recent.push(timestamp);
-    rememberClient(beaconBuckets, key, recent);
-    return true;
-  };
+  const analytics = createAnalyticsCapture({
+    db,
+    now,
+    settleMs: analyticsSettleMs,
+  });
 
   app.addHook('onRequest', async (request) => {
     if (request.method !== 'GET') return;
-    const pathname = requestPath(request);
-    if (pathname !== '/' && pathname !== '/status' && pathname !== '/status/') {
-      return;
-    }
-    const context = analyticsContext(request);
-    recordAnalyticsEvent(db, {
-      kind: 'visit',
-      occurredAt: context.occurredAt,
-      visitorHash: context.visitorHash,
-      isBot: context.info.bot,
-      device: context.info.device,
-      browser: context.info.browser,
-      os: context.info.os,
-      referrerHost: referrerHost(request),
-      path: pathname === '/status/' ? '/status' : pathname,
-    });
+    analytics.captureVisit(request);
   });
 
   app.addHook('onResponse', async (request, reply) => {
-    const statusCode = reply.statusCode;
-    if (statusCode < 400) return;
-    const pathname = requestPath(request);
-    if (pathname.startsWith('/api/analytics')) return;
-    if (isAssetPath(pathname)) return;
-    if (!pathname.startsWith('/api/') && statusCode !== 404) return;
-
-    const context = analyticsContext(request);
-    recordAnalyticsEvent(db, {
-      kind: 'error',
-      occurredAt: context.occurredAt,
-      visitorHash: context.visitorHash,
-      isBot: context.info.bot,
-      device: context.info.device,
-      browser: context.info.browser,
-      os: context.info.os,
-      path: pathname,
-      statusCode,
-    });
+    analytics.captureError(request, reply.statusCode);
   });
 
   const currentStatus = () => {
@@ -486,11 +178,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   app.addHook('onClose', async () => {
-    for (const pending of pendingSearches.values()) {
-      clearTimeout(pending.timer);
-      pending.write();
-    }
-    pendingSearches.clear();
+    analytics.flush();
     await scheduled?.stop();
     await startup?.stop();
     db.close();
@@ -531,32 +219,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     '/api/analytics/event',
     { bodyLimit: 1024 },
     async (request, reply) => {
-      const context = analyticsContext(request);
-      if (!beaconAllowed(context.visitorHash)) {
+      const result = analytics.captureBeacon(request, request.body);
+      if (result === 'rate-limited') {
         return reply.code(429).send({ error: 'Too many analytics events' });
       }
-
-      const event = parseBeaconBody(request.body);
-      if (!event) {
+      if (result === 'invalid') {
         return reply.code(400).send({ error: 'Invalid analytics event' });
       }
-
-      const detail =
-        event.event === 'outbound'
-          ? event.destination ?? null
-          : event.event === 'share'
-            ? event.result ?? null
-            : event.event === 'scroll'
-              ? String(event.quartile)
-              : 'reset';
-
-      recordAnalyticsEvent(db, {
-        kind: event.event,
-        occurredAt: context.occurredAt,
-        isBot: context.info.bot,
-        detail,
-      });
-
       return reply.code(204).send();
     },
   );
@@ -624,51 +293,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     });
 
     if (offset === 0) {
-      const context = analyticsContext(request);
-      const descriptor = filterDescriptor(query);
-      const filterSignature = descriptor ? JSON.stringify(descriptor) : '';
-      const previousFilters = lastFilters.get(context.visitorHash);
-      if (filterSignature && filterSignature !== previousFilters) {
-        recordAnalyticsEvent(db, {
-          kind: 'filter',
-          occurredAt: context.occurredAt,
-          visitorHash: context.visitorHash,
-          isBot: context.info.bot,
-          path: requestPath(request),
-          filters: filterSignature,
-        });
-      }
-      rememberClient(lastFilters, context.visitorHash, filterSignature);
-
-      const sortSignature = sortSignatureFor(query);
-      const previousSort = lastSorts.get(context.visitorHash);
-      if (previousSort !== undefined && previousSort !== sortSignature) {
-        recordAnalyticsEvent(db, {
-          kind: 'sort',
-          occurredAt: context.occurredAt,
-          visitorHash: context.visitorHash,
-          isBot: context.info.bot,
-          path: requestPath(request),
-          sort: sortSignature,
-        });
-      }
-      rememberClient(lastSorts, context.visitorHash, sortSignature);
-
-      const queryText = query.q?.trim() ?? '';
-      if (queryText) {
-        scheduleSearch(context.visitorHash, () => {
-          recordAnalyticsEvent(db, {
-            kind: 'search',
-            occurredAt: context.occurredAt,
-            isBot: context.info.bot,
-            query: queryText,
-            filters: filterSignature || null,
-            sort: sortSignature,
-            resultCount: result.total,
-            zeroResults: result.total === 0,
-          });
-        });
-      }
+      analytics.captureCatalogueQuery(request, query, result.total);
     }
 
     return result;
@@ -683,7 +308,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     if (!book) {
       return reply.code(404).send({ error: 'Book not found' });
     }
-    recordBookView(request, book.joinId);
+    analytics.captureBookView(request, book.joinId);
     return book;
   });
 

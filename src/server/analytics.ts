@@ -1,11 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
-import type {
-  AnalyticsBreakdown,
-  AnalyticsBookViews,
-  AnalyticsDay,
-  AnalyticsEventKind,
-  AnalyticsSummary,
+import {
+  RETENTION_FOREVER,
+  type AnalyticsBreakdown,
+  type AnalyticsBookViews,
+  type AnalyticsDay,
+  type AnalyticsEventKind,
+  type AnalyticsSummary,
 } from '../shared/analytics.js';
 
 const SALT_KEY = 'visitor_salt';
@@ -234,19 +235,6 @@ export function recordAnalyticsEvent(
   );
 }
 
-export function purgeExpiredAnalytics(
-  db: DatabaseSync,
-  retentionDays: number,
-  now: Date = new Date(),
-): number {
-  if (!Number.isFinite(retentionDays) || retentionDays <= 0) return 0;
-  const cutoff = new Date(now.getTime() - retentionDays * MS_PER_DAY);
-  const result = db
-    .prepare('DELETE FROM analytics_events WHERE occurred_at < ?')
-    .run(cutoff.toISOString());
-  return Number(result.changes);
-}
-
 function countRows(
   db: DatabaseSync,
   sql: string,
@@ -258,173 +246,338 @@ function countRows(
   return Number(row?.count ?? 0);
 }
 
-function breakdown(
-  db: DatabaseSync,
-  sql: string,
-  params: SQLInputValue[] = [],
-): AnalyticsBreakdown[] {
-  return db.prepare(sql).all(...params) as unknown as AnalyticsBreakdown[];
+function rollupAnalyticsBefore(db: DatabaseSync, cutoffDay: string): number {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare(`
+      INSERT INTO analytics_daily (
+        day, kind, is_bot, path, device, browser, os, referrer_host,
+        filters, sort, detail, zero_results, events
+      )
+      SELECT
+        day, kind, is_bot,
+        COALESCE(path, ''), COALESCE(device, ''), COALESCE(browser, ''),
+        COALESCE(os, ''), COALESCE(referrer_host, ''), COALESCE(filters, ''),
+        COALESCE(sort, ''), COALESCE(detail, ''), zero_results, COUNT(*)
+      FROM analytics_events
+      WHERE day < ?
+      GROUP BY day, kind, is_bot, path, device, browser, os, referrer_host,
+        filters, sort, detail, zero_results
+      ON CONFLICT (
+        day, kind, is_bot, path, device, browser, os, referrer_host,
+        filters, sort, detail, zero_results
+      )
+      DO UPDATE SET events = analytics_daily.events + excluded.events
+    `).run(cutoffDay);
+
+    db.prepare(`
+      INSERT INTO analytics_daily_visitors (day, unique_visitors)
+      SELECT day, COUNT(DISTINCT visitor_hash)
+      FROM analytics_events
+      WHERE day < ? AND kind = 'visit' AND is_bot = 0
+        AND visitor_hash IS NOT NULL
+      GROUP BY day
+      ON CONFLICT (day) DO UPDATE SET
+        unique_visitors = excluded.unique_visitors
+    `).run(cutoffDay);
+
+    const result = db
+      .prepare('DELETE FROM analytics_events WHERE day < ?')
+      .run(cutoffDay);
+    db.exec('COMMIT');
+    return Number(result.changes);
+  } catch (caught) {
+    db.exec('ROLLBACK');
+    throw caught;
+  }
 }
 
-function rangeClause(since?: string, until?: string): {
+export function purgeExpiredAnalytics(
+  db: DatabaseSync,
+  retentionDays: number,
+  now: Date = new Date(),
+): number {
+  if (!Number.isFinite(retentionDays) || retentionDays <= RETENTION_FOREVER) {
+    return 0;
+  }
+  const cutoffDay = utcDay(
+    new Date(now.getTime() - retentionDays * MS_PER_DAY),
+  );
+  const expired = countRows(
+    db,
+    'SELECT COUNT(*) AS count FROM analytics_events WHERE day < ?',
+    [cutoffDay],
+  );
+  if (expired === 0) return 0;
+
+  return rollupAnalyticsBefore(db, cutoffDay);
+}
+
+interface SqlFilter {
   clause: string;
   params: SQLInputValue[];
-} {
-  const parts: string[] = [];
-  const params: SQLInputValue[] = [];
-  if (since) {
-    parts.push('occurred_at >= ?');
-    params.push(since);
-  }
-  if (until) {
-    parts.push('occurred_at <= ?');
-    params.push(until);
-  }
-  return {
-    clause: parts.length > 0 ? `WHERE ${parts.join(' AND ')}` : '',
-    params,
-  };
 }
 
-function andWhere(base: string, range: { clause: string }): string {
-  const extra = range.clause.replace(/^WHERE /, '');
-  if (!extra) return `WHERE ${base}`;
-  return `WHERE ${base} AND ${extra}`;
+interface AnalyticsScope {
+  daily: SqlFilter;
+  raw: SqlFilter;
+}
+
+const ALL_SCOPE: AnalyticsScope = {
+  daily: { clause: '', params: [] },
+  raw: { clause: '', params: [] },
+};
+
+function whereWith(condition: string, filter: SqlFilter): string {
+  const extra = filter.clause.replace(/^WHERE\s+/, '');
+  const parts = [condition, extra].filter(Boolean);
+  return parts.length > 0 ? `WHERE ${parts.join(' AND ')}` : '';
+}
+
+function combinedMetric(
+  db: DatabaseSync,
+  condition: string,
+  scope: AnalyticsScope,
+  dailyExpression: string,
+  rawExpression: string,
+): number {
+  const row = db
+    .prepare(`
+      SELECT COALESCE(SUM(value), 0) AS value FROM (
+        SELECT ${dailyExpression} AS value
+        FROM analytics_daily ${whereWith(condition, scope.daily)}
+        UNION ALL
+        SELECT ${rawExpression} AS value
+        FROM analytics_events ${whereWith(condition, scope.raw)}
+      )
+    `)
+    .get(...scope.daily.params, ...scope.raw.params) as unknown as
+    | { value: number }
+    | undefined;
+  return Number(row?.value ?? 0);
+}
+
+function combinedBreakdown(
+  db: DatabaseSync,
+  condition: string,
+  labelExpression: string,
+  scope: AnalyticsScope,
+  limit?: number,
+): AnalyticsBreakdown[] {
+  const limitClause = limit === undefined ? '' : `LIMIT ${limit}`;
+  return db
+    .prepare(`
+      SELECT label, SUM(count) AS count FROM (
+        SELECT ${labelExpression} AS label, SUM(events) AS count
+        FROM analytics_daily ${whereWith(condition, scope.daily)}
+        GROUP BY label
+        UNION ALL
+        SELECT ${labelExpression} AS label, COUNT(*) AS count
+        FROM analytics_events ${whereWith(condition, scope.raw)}
+        GROUP BY label
+      )
+      GROUP BY label
+      ORDER BY count DESC, label ASC
+      ${limitClause}
+    `)
+    .all(...scope.daily.params, ...scope.raw.params) as unknown as
+    AnalyticsBreakdown[];
+}
+
+function combinedMostViewedBooks(
+  db: DatabaseSync,
+  scope: AnalyticsScope,
+  limit: number,
+): AnalyticsBookViews[] {
+  return db
+    .prepare(`
+      SELECT
+        combined.joinId AS joinId,
+        COALESCE(books.title, combined.joinId) AS title,
+        SUM(combined.views) AS views
+      FROM (
+        SELECT detail AS joinId, SUM(events) AS views
+        FROM analytics_daily
+        ${whereWith("kind = 'book_view' AND detail <> ''", scope.daily)}
+        GROUP BY detail
+        UNION ALL
+        SELECT detail AS joinId, COUNT(*) AS views
+        FROM analytics_events
+        ${whereWith("kind = 'book_view' AND detail <> ''", scope.raw)}
+        GROUP BY detail
+      ) AS combined
+      LEFT JOIN book_records AS books ON books.join_id = combined.joinId
+      GROUP BY combined.joinId
+      ORDER BY views DESC, title ASC
+      LIMIT ${limit}
+    `)
+    .all(...scope.daily.params, ...scope.raw.params) as unknown as
+    AnalyticsBookViews[];
+}
+
+function readDailyVisits(db: DatabaseSync): AnalyticsDay[] {
+  const visits = db
+    .prepare(`
+      SELECT day, SUM(visits) AS visits, SUM(bots) AS bots FROM (
+        SELECT day, SUM(events) AS visits, SUM(events * is_bot) AS bots
+        FROM analytics_daily
+        WHERE kind = 'visit'
+        GROUP BY day
+        UNION ALL
+        SELECT day, COUNT(*) AS visits, SUM(is_bot) AS bots
+        FROM analytics_events
+        WHERE kind = 'visit'
+        GROUP BY day
+      )
+      GROUP BY day
+      ORDER BY day DESC
+      LIMIT 30
+    `)
+    .all() as unknown as Array<{
+    day: string;
+    visits: number;
+    bots: number | null;
+  }>;
+
+  const uniqueRows = db
+    .prepare(`
+      SELECT day, SUM(unique_visitors) AS uniqueVisitors FROM (
+        SELECT day, unique_visitors FROM analytics_daily_visitors
+        UNION ALL
+        SELECT day, COUNT(DISTINCT visitor_hash) AS unique_visitors
+        FROM analytics_events
+        WHERE kind = 'visit' AND is_bot = 0 AND visitor_hash IS NOT NULL
+        GROUP BY day
+      )
+      GROUP BY day
+    `)
+    .all() as unknown as Array<{ day: string; uniqueVisitors: number }>;
+
+  const uniqueByDay = new Map(
+    uniqueRows.map((entry) => [entry.day, Number(entry.uniqueVisitors)]),
+  );
+
+  return visits.map((entry) => ({
+    day: entry.day,
+    visits: Number(entry.visits),
+    uniqueVisitors: uniqueByDay.get(entry.day) ?? 0,
+    bots: Number(entry.bots ?? 0),
+  }));
+}
+
+function scopeForBounds(bounds: {
+  since: string | null;
+  until: string | null;
+}): AnalyticsScope {
+  const rawParts: string[] = [];
+  const rawParams: SQLInputValue[] = [];
+  const dailyParts: string[] = [];
+  const dailyParams: SQLInputValue[] = [];
+  if (bounds.since) {
+    rawParts.push('occurred_at >= ?');
+    rawParams.push(bounds.since);
+    dailyParts.push('day >= ?');
+    dailyParams.push(bounds.since.slice(0, 10));
+  }
+  if (bounds.until) {
+    rawParts.push('occurred_at <= ?');
+    rawParams.push(bounds.until);
+    dailyParts.push('day <= ?');
+    dailyParams.push(bounds.until.slice(0, 10));
+  }
+  return {
+    daily: {
+      clause: dailyParts.length > 0 ? `WHERE ${dailyParts.join(' AND ')}` : '',
+      params: dailyParams,
+    },
+    raw: {
+      clause: rawParts.length > 0 ? `WHERE ${rawParts.join(' AND ')}` : '',
+      params: rawParams,
+    },
+  };
 }
 
 export function readAnalyticsSummary(
   db: DatabaseSync,
   now: Date = new Date(),
 ): AnalyticsSummary {
-  const daily = db
-    .prepare(`
-      SELECT
-        day,
-        COUNT(*) AS visits,
-        COUNT(DISTINCT CASE WHEN is_bot = 0 THEN visitor_hash END) AS uniqueVisitors,
-        SUM(is_bot) AS bots
-      FROM analytics_events
-      WHERE kind = 'visit'
-      GROUP BY day
-      ORDER BY day DESC
-      LIMIT 30
-    `)
-    .all() as unknown as AnalyticsDay[];
-
-  const events = breakdown(
-    db,
-    `
-      SELECT kind AS label, COUNT(*) AS count
-      FROM analytics_events
-      GROUP BY kind
-      ORDER BY count DESC, label ASC
-    `,
-  );
-
-  const searchTotals = db
-    .prepare(`
-      SELECT
-        COUNT(*) AS total,
-        SUM(zero_results) AS zeroResults
-      FROM analytics_events
-      WHERE kind = 'search'
-    `)
-    .get() as unknown as
-    | { total: number; zeroResults: number | null }
-    | undefined;
+  const scope = ALL_SCOPE;
 
   return {
     generatedAt: now.toISOString(),
     approximate: true,
     pageViews: {
-      total: countRows(
+      total: combinedMetric(
         db,
-        "SELECT COUNT(*) AS count FROM analytics_events WHERE kind = 'visit'",
+        "kind = 'visit'",
+        scope,
+        'SUM(events)',
+        'COUNT(*)',
       ),
-      byPath: breakdown(
+      byPath: combinedBreakdown(
         db,
-        `
-          SELECT COALESCE(path, 'unknown') AS label, COUNT(*) AS count
-          FROM analytics_events
-          WHERE kind = 'visit'
-          GROUP BY path
-          ORDER BY count DESC, label ASC
-        `,
+        "kind = 'visit'",
+        "COALESCE(NULLIF(path, ''), 'unknown')",
+        scope,
       ),
     },
-    daily: daily.map((entry) => ({
-      day: entry.day,
-      visits: Number(entry.visits),
-      uniqueVisitors: Number(entry.uniqueVisitors),
-      bots: Number(entry.bots ?? 0),
-    })),
-    humans: countRows(
+    daily: readDailyVisits(db),
+    humans: combinedMetric(
       db,
-      "SELECT COUNT(*) AS count FROM analytics_events WHERE kind = 'visit' AND is_bot = 0",
+      "kind = 'visit' AND is_bot = 0",
+      scope,
+      'SUM(events)',
+      'COUNT(*)',
     ),
-    bots: countRows(
+    bots: combinedMetric(
       db,
-      "SELECT COUNT(*) AS count FROM analytics_events WHERE kind = 'visit' AND is_bot = 1",
+      "kind = 'visit' AND is_bot = 1",
+      scope,
+      'SUM(events)',
+      'COUNT(*)',
     ),
-    devices: breakdown(
+    devices: combinedBreakdown(
       db,
-      `
-        SELECT COALESCE(device, 'unknown') AS label, COUNT(*) AS count
-        FROM analytics_events
-        WHERE kind = 'visit' AND is_bot = 0
-        GROUP BY device
-        ORDER BY count DESC, label ASC
-      `,
+      "kind = 'visit' AND is_bot = 0",
+      "COALESCE(NULLIF(device, ''), 'unknown')",
+      scope,
     ),
-    browsers: breakdown(
+    browsers: combinedBreakdown(
       db,
-      `
-        SELECT COALESCE(browser, 'unknown') AS label, COUNT(*) AS count
-        FROM analytics_events
-        WHERE kind = 'visit' AND is_bot = 0
-        GROUP BY browser
-        ORDER BY count DESC, label ASC
-      `,
+      "kind = 'visit' AND is_bot = 0",
+      "COALESCE(NULLIF(browser, ''), 'unknown')",
+      scope,
     ),
-    operatingSystems: breakdown(
+    operatingSystems: combinedBreakdown(
       db,
-      `
-        SELECT COALESCE(os, 'unknown') AS label, COUNT(*) AS count
-        FROM analytics_events
-        WHERE kind = 'visit' AND is_bot = 0
-        GROUP BY os
-        ORDER BY count DESC, label ASC
-      `,
+      "kind = 'visit' AND is_bot = 0",
+      "COALESCE(NULLIF(os, ''), 'unknown')",
+      scope,
     ),
-    referrers: breakdown(
+    referrers: combinedBreakdown(
       db,
-      `
-        SELECT COALESCE(referrer_host, 'direct') AS label, COUNT(*) AS count
-        FROM analytics_events
-        WHERE kind = 'visit'
-        GROUP BY referrer_host
-        ORDER BY count DESC, label ASC
-        LIMIT 25
-      `,
+      "kind = 'visit'",
+      "COALESCE(NULLIF(referrer_host, ''), 'direct')",
+      scope,
+      25,
     ),
-    mostViewedBooks: db
-      .prepare(`
-        SELECT
-          events.detail AS joinId,
-          COALESCE(books.title, events.detail) AS title,
-          COUNT(*) AS views
-        FROM analytics_events AS events
-        LEFT JOIN book_records AS books ON books.join_id = events.detail
-        WHERE events.kind = 'book_view'
-        GROUP BY events.detail
-        ORDER BY views DESC, title ASC
-        LIMIT 20
-      `)
-      .all() as unknown as AnalyticsBookViews[],
-    events,
+    mostViewedBooks: combinedMostViewedBooks(db, scope, 20),
+    events: combinedBreakdown(db, '', 'kind', scope),
     searches: {
-      total: Number(searchTotals?.total ?? 0),
-      zeroResults: Number(searchTotals?.zeroResults ?? 0),
+      total: combinedMetric(
+        db,
+        "kind = 'search'",
+        scope,
+        'SUM(events)',
+        'COUNT(*)',
+      ),
+      zeroResults: combinedMetric(
+        db,
+        "kind = 'search'",
+        scope,
+        'SUM(events * zero_results)',
+        'SUM(zero_results)',
+      ),
     },
   };
 }
@@ -528,9 +681,7 @@ export function readAnalyticsReport(
   now: Date = new Date(),
 ): AnalyticsReport {
   const bounds = resolveDateRange(range);
-  const where = rangeClause(bounds.since ?? undefined, bounds.until ?? undefined);
-  const whereEvents = andWhere("kind = 'visit'", where);
-  const whereEventsAll = where.clause ? where.clause : '';
+  const scope = scopeForBounds(bounds);
 
   const events = db
     .prepare(`
@@ -538,10 +689,10 @@ export function readAnalyticsReport(
         result_count, zero_results, referrer_host, device, browser, os,
         is_bot, detail
       FROM analytics_events
-      ${where.clause}
+      ${scope.raw.clause}
       ORDER BY occurred_at ASC, id ASC
     `)
-    .all(...where.params) as unknown as EventRow[];
+    .all(...scope.raw.params) as unknown as EventRow[];
 
   const searchRows: AnalyticsSearchRow[] = events
     .filter((entry) => entry.kind === 'search')
@@ -554,107 +705,95 @@ export function readAnalyticsReport(
       zeroResults: entry.zero_results === 1,
     }));
 
-  const groupDetail = (kind: string): AnalyticsBreakdown[] =>
-    breakdown(
-      db,
-      `
-        SELECT COALESCE(detail, 'unknown') AS label, COUNT(*) AS count
-        FROM analytics_events
-        ${andWhere(`kind = '${kind}'`, where)}
-        GROUP BY detail
-        ORDER BY count DESC, label ASC
-      `,
-      where.params,
-    );
-
-  const groupColumn = (column: string, kind: string): AnalyticsBreakdown[] =>
-    breakdown(
-      db,
-      `
-        SELECT COALESCE(${column}, 'unknown') AS label, COUNT(*) AS count
-        FROM analytics_events
-        ${andWhere(`kind = '${kind}'`, where)}
-        GROUP BY ${column}
-        ORDER BY count DESC, label ASC
-      `,
-      where.params,
-    );
-
   return {
     generatedAt: now.toISOString(),
     since: bounds.since,
     until: bounds.until,
-    totalEvents: events.length,
-    visits: countRows(db, `SELECT COUNT(*) AS count FROM analytics_events ${whereEvents}`, where.params),
-    humans: countRows(
+    totalEvents: combinedMetric(db, '', scope, 'SUM(events)', 'COUNT(*)'),
+    visits: combinedMetric(
       db,
-      `SELECT COUNT(*) AS count FROM analytics_events ${andWhere("kind = 'visit' AND is_bot = 0", where)}`,
-      where.params,
+      "kind = 'visit'",
+      scope,
+      'SUM(events)',
+      'COUNT(*)',
     ),
-    bots: countRows(
+    humans: combinedMetric(
       db,
-      `SELECT COUNT(*) AS count FROM analytics_events ${andWhere("kind = 'visit' AND is_bot = 1", where)}`,
-      where.params,
+      "kind = 'visit' AND is_bot = 0",
+      scope,
+      'SUM(events)',
+      'COUNT(*)',
+    ),
+    bots: combinedMetric(
+      db,
+      "kind = 'visit' AND is_bot = 1",
+      scope,
+      'SUM(events)',
+      'COUNT(*)',
     ),
     searches: searchRows,
     zeroResultSearches: searchRows.filter((entry) => entry.zeroResults),
-    filters: groupColumn('filters', 'filter'),
-    sorts: groupColumn('sort', 'sort'),
-    mostViewedBooks: db
-      .prepare(`
-        SELECT
-          events.detail AS joinId,
-          COALESCE(books.title, events.detail) AS title,
-          COUNT(*) AS views
-        FROM analytics_events AS events
-        LEFT JOIN book_records AS books ON books.join_id = events.detail
-        ${andWhere("events.kind = 'book_view'", where)}
-        GROUP BY events.detail
-        ORDER BY views DESC, title ASC
-        LIMIT 50
-      `)
-      .all(...where.params) as unknown as AnalyticsBookViews[],
-    outbound: groupDetail('outbound'),
-    share: groupDetail('share'),
-    scroll: groupDetail('scroll'),
-    errors: groupColumn('path', 'error'),
-    referrers: db
-      .prepare(`
-        SELECT COALESCE(referrer_host, 'direct') AS label, COUNT(*) AS count
-        FROM analytics_events
-        ${whereEventsAll || "WHERE kind = 'visit'"}
-        ${whereEventsAll ? "AND kind = 'visit'" : ''}
-        GROUP BY referrer_host
-        ORDER BY count DESC, label ASC
-      `)
-      .all(...where.params) as unknown as AnalyticsBreakdown[],
-    devices: db
-      .prepare(`
-        SELECT COALESCE(device, 'unknown') AS label, COUNT(*) AS count
-        FROM analytics_events
-        ${andWhere("kind = 'visit' AND is_bot = 0", where)}
-        GROUP BY device
-        ORDER BY count DESC, label ASC
-      `)
-      .all(...where.params) as unknown as AnalyticsBreakdown[],
-    browsers: db
-      .prepare(`
-        SELECT COALESCE(browser, 'unknown') AS label, COUNT(*) AS count
-        FROM analytics_events
-        ${andWhere("kind = 'visit' AND is_bot = 0", where)}
-        GROUP BY browser
-        ORDER BY count DESC, label ASC
-      `)
-      .all(...where.params) as unknown as AnalyticsBreakdown[],
-    operatingSystems: db
-      .prepare(`
-        SELECT COALESCE(os, 'unknown') AS label, COUNT(*) AS count
-        FROM analytics_events
-        ${andWhere("kind = 'visit' AND is_bot = 0", where)}
-        GROUP BY os
-        ORDER BY count DESC, label ASC
-      `)
-      .all(...where.params) as unknown as AnalyticsBreakdown[],
+    filters: combinedBreakdown(
+      db,
+      "kind = 'filter'",
+      "COALESCE(NULLIF(filters, ''), 'unknown')",
+      scope,
+    ),
+    sorts: combinedBreakdown(
+      db,
+      "kind = 'sort'",
+      "COALESCE(NULLIF(sort, ''), 'unknown')",
+      scope,
+    ),
+    mostViewedBooks: combinedMostViewedBooks(db, scope, 50),
+    outbound: combinedBreakdown(
+      db,
+      "kind = 'outbound'",
+      "COALESCE(NULLIF(detail, ''), 'unknown')",
+      scope,
+    ),
+    share: combinedBreakdown(
+      db,
+      "kind = 'share'",
+      "COALESCE(NULLIF(detail, ''), 'unknown')",
+      scope,
+    ),
+    scroll: combinedBreakdown(
+      db,
+      "kind = 'scroll'",
+      "COALESCE(NULLIF(detail, ''), 'unknown')",
+      scope,
+    ),
+    errors: combinedBreakdown(
+      db,
+      "kind = 'error'",
+      "COALESCE(NULLIF(path, ''), 'unknown')",
+      scope,
+    ),
+    referrers: combinedBreakdown(
+      db,
+      "kind = 'visit'",
+      "COALESCE(NULLIF(referrer_host, ''), 'direct')",
+      scope,
+    ),
+    devices: combinedBreakdown(
+      db,
+      "kind = 'visit' AND is_bot = 0",
+      "COALESCE(NULLIF(device, ''), 'unknown')",
+      scope,
+    ),
+    browsers: combinedBreakdown(
+      db,
+      "kind = 'visit' AND is_bot = 0",
+      "COALESCE(NULLIF(browser, ''), 'unknown')",
+      scope,
+    ),
+    operatingSystems: combinedBreakdown(
+      db,
+      "kind = 'visit' AND is_bot = 0",
+      "COALESCE(NULLIF(os, ''), 'unknown')",
+      scope,
+    ),
     events: events.map((entry) => ({
       occurredAt: entry.occurred_at,
       kind: entry.kind,
