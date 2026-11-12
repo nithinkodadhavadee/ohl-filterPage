@@ -345,6 +345,7 @@ describe('sweep audit', () => {
     insertBook('c-skip', 'C Skip');
     insertBook('d-fail', 'D Fail');
     insertBook('e-hidden', 'E Hidden', { hidden: true });
+    insertBook('f-recovered', 'F Recovered');
 
     recordSweepAttempt(db, {
       joinId: 'b-success',
@@ -363,12 +364,24 @@ describe('sweep audit', () => {
       outcome: 'failed',
       reason: 'parse failure',
     });
+    recordSweepAttempt(db, {
+      joinId: 'f-recovered',
+      attemptedAt: '2026-11-10T10:03:00.000Z',
+      outcome: 'failed',
+      reason: 'parse failure',
+    });
+    recordSweepAttempt(db, {
+      joinId: 'f-recovered',
+      attemptedAt: '2026-11-10T10:04:00.000Z',
+      outcome: 'refreshed',
+    });
 
     expect(listBooksWithoutSuccessfulSweep(db)).toEqual([
       {
         joinId: 'a-never',
         title: 'A Never',
         author: 'An Author',
+        attempted: false,
         lastAttemptAt: null,
         outcome: null,
         reason: null,
@@ -377,6 +390,7 @@ describe('sweep audit', () => {
         joinId: 'c-skip',
         title: 'C Skip',
         author: 'An Author',
+        attempted: true,
         lastAttemptAt: '2026-11-10T10:01:00.000Z',
         outcome: 'skipped',
         reason: 'Libib returned no detail',
@@ -385,6 +399,7 @@ describe('sweep audit', () => {
         joinId: 'd-fail',
         title: 'D Fail',
         author: 'An Author',
+        attempted: true,
         lastAttemptAt: '2026-11-10T10:02:00.000Z',
         outcome: 'failed',
         reason: 'parse failure',
@@ -394,12 +409,13 @@ describe('sweep audit', () => {
     const csv = getSweepAuditCsv(db);
     expect(csv.count).toBe(3);
     expect(csv.csv.split('\n')[0]).toBe(
-      'join_id,title,author,last_attempt_at,outcome,reason',
+      'join_id,title,author,attempted,last_attempt_at,outcome,reason',
     );
-    expect(csv.csv).toContain('a-never,A Never,An Author,,,');
+    expect(csv.csv).toContain('a-never,A Never,An Author,no,,,');
     expect(csv.csv).toContain(
-      'c-skip,C Skip,An Author,2026-11-10T10:01:00.000Z,skipped,Libib returned no detail',
+      'c-skip,C Skip,An Author,yes,2026-11-10T10:01:00.000Z,skipped,Libib returned no detail',
     );
+    expect(csv.csv).not.toContain('f-recovered');
 
     app = await buildApp({ dataDir, serveStatic: false });
 
@@ -408,7 +424,17 @@ describe('sweep audit', () => {
       url: '/api/sweep/audit',
     });
     expect(audit.statusCode).toBe(200);
-    expect((audit.json() as { count: number }).count).toBe(3);
+    const auditBody = audit.json() as {
+      count: number;
+      books: Array<{ joinId: string; attempted: boolean }>;
+    };
+    expect(auditBody.count).toBe(3);
+    expect(
+      auditBody.books.find((book) => book.joinId === 'a-never')?.attempted,
+    ).toBe(false);
+    expect(
+      auditBody.books.find((book) => book.joinId === 'd-fail')?.attempted,
+    ).toBe(true);
 
     const download = await app.inject({
       method: 'GET',

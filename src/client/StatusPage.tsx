@@ -337,8 +337,13 @@ function SweepPanel({ status }: { status: CrawlerStatus }) {
       ) : null}
       <p className="sweep-audit-link">
         <a href="/api/sweep/audit.csv" download>
-          Download sweep audit CSV
+          Download books without a successful sweep (CSV)
         </a>
+      </p>
+      <p className="muted">
+        A cumulative worklist of visible books with no successful sweep yet. It
+        shows each book&rsquo;s latest attempt, including books never attempted;
+        per-cycle history is in the run history above.
       </p>
     </div>
   );
