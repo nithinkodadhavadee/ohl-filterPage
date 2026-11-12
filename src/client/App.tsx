@@ -50,6 +50,50 @@ function initialOf(title: string): string {
   return title.trim().charAt(0).toUpperCase() || '?';
 }
 
+function fallbackCopy(text: string): boolean {
+  if (typeof document === 'undefined' || !document.body) return false;
+  if (typeof document.execCommand !== 'function') return false;
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.setAttribute('aria-hidden', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '0';
+  textarea.style.left = '-9999px';
+  const previousFocus =
+    document.activeElement && 'focus' in document.activeElement
+      ? (document.activeElement as HTMLElement)
+      : null;
+
+  document.body.appendChild(textarea);
+
+  try {
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+    previousFocus?.focus();
+  }
+}
+
+export async function copyText(text: string): Promise<boolean> {
+  const secureContext =
+    typeof window !== 'undefined' && window.isSecureContext === true;
+  if (secureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the execCommand fallback.
+    }
+  }
+  return fallbackCopy(text);
+}
+
 function crawlerHealth(status: CrawlerStatus | null): {
   label: string;
   tone: 'ok' | 'warn' | 'off';
@@ -314,17 +358,19 @@ export function BookDetail({
   book: Book;
   permalink: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>(
+    'idle',
+  );
+  const copyStatusId = useId();
   const sweep = describeSweep(book.sweep);
 
+  useEffect(() => {
+    setCopyStatus('idle');
+  }, [permalink]);
+
   const copyLink = async () => {
-    if (!navigator.clipboard) return;
-    try {
-      await navigator.clipboard.writeText(permalink);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
+    const copied = await copyText(permalink);
+    setCopyStatus(copied ? 'copied' : 'failed');
   };
 
   return (
@@ -458,9 +504,29 @@ export function BookDetail({
             This record refreshed {formatDateTime(book.refreshedAt, 'unknown')}
           </p>
           <div className="detail-actions">
-            <button type="button" className="copy-link" onClick={copyLink}>
-              {copied ? 'Link copied' : 'Copy link'}
+            <button
+              type="button"
+              className="copy-link"
+              onClick={copyLink}
+              aria-describedby={
+                copyStatus === 'idle' ? undefined : copyStatusId
+              }
+            >
+              Copy link
             </button>
+            <span
+              id={copyStatusId}
+              className="copy-status"
+              data-state={copyStatus}
+              role="status"
+              aria-live="polite"
+            >
+              {copyStatus === 'copied'
+                ? 'Link copied to clipboard.'
+                : copyStatus === 'failed'
+                  ? 'Could not copy automatically. Select the address bar and copy the URL.'
+                  : ''}
+            </span>
             <a
               className="libib-link"
               href={book.libibUrl}

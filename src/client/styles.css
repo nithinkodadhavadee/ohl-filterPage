@@ -693,6 +693,19 @@ button.badge {
   background: var(--surface-muted);
 }
 
+.copy-status {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.copy-status[data-state='copied'] {
+  color: var(--available);
+}
+
+.copy-status[data-state='failed'] {
+  color: var(--unavailable);
+}
+
 .libib-link {
   display: inline-block;
   padding: 0.55rem 1rem;
