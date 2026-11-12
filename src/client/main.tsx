@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { AnalyticsPage } from './AnalyticsPage';
 import { App } from './App';
 import { StatusPage } from './StatusPage';
 import { TermsPage } from './TermsPage';
@@ -18,6 +19,8 @@ createRoot(rootElement).render(
       <StatusPage />
     ) : path === '/terms' ? (
       <TermsPage />
+    ) : path === '/analytics' ? (
+      <AnalyticsPage />
     ) : (
       <App />
     )}

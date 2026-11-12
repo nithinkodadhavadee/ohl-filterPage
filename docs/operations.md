@@ -192,6 +192,20 @@ npm run export:unmatched
 npm run export:unmatched -- --out unmatched.csv
 ```
 
+### `npm run analytics:report -- [--since <date>] [--until <date>] [--out <dir>]`
+
+Writes a private analytics report for the Librarian. It contains raw Search text,
+Zero-result searches, Filter use, sort use, most-viewed books, outbound/share/
+scroll events, referrers, Bots and device/browser/OS breakdowns. The HTML and CSV
+are written to `DATA_DIR/reports/` unless `--out` points elsewhere. Dates accept
+`YYYY-MM-DD` (whole UTC day) or an ISO timestamp.
+
+```sh
+npm run analytics:report
+npm run analytics:report -- --since 2026-11-01 --until 2026-11-30
+npm run analytics:report -- --since 2026-11-01 --out /tmp/analytics
+```
+
 ### `npm run seed`
 
 Loads the committed fixtures into the database and copies their covers. It is
@@ -244,6 +258,7 @@ The pre-Pass 3 names are removed, not aliased: `index` became
 | `ENRICH_COOLDOWN_SECONDS`         | `3600`                                    | Skip a startup Enrichment pass completed within this window.            |
 | `CATALOGUE_SCAN_INTERVAL_SECONDS` | `86400`                                   | Scheduled catalogue scan interval; `0` disables it.                     |
 | `SNAPSHOT_RETAIN`                 | `10`                                      | Number of recent snapshots kept after a Snapshot.                       |
+| `ANALYTICS_RETENTION_DAYS`        | `0` (keep forever)                        | Delete raw analytics events older than this many days on startup; aggregates are unaffected because they are computed from raw rows. |
 | `CRAWLER_MAX_BACKOFF_SECONDS`     | `900`                                     | Upper bound for 403/429 backoff.                                        |
 | `LIBIB_REQUEST_DELAY_MS`          | `1000` (detail fallback `2000`)           | Delay between Libib index requests; also the fallback for enrichment and detail pacing. |
 | `ENRICH_REQUEST_DELAY_MS`         | `1000`                                    | Delay between enrichment requests; falls back to `LIBIB_REQUEST_DELAY_MS`. |
@@ -278,11 +293,30 @@ data/
   catalogue.sqlite-shm      SQLite shared-memory file, when present
   covers/                   Cached cover images, named <joinId>-<hash>.<ext>
   snapshots/                Snapshots named catalogue-<timestamp>.sqlite
+  reports/                  On-demand analytics HTML and CSV reports
   server.lock               Server heartbeat (with PID for diagnostics); used to refuse double starts and live restores
 ```
 
 Covers are re-fetchable and therefore excluded from Snapshots. Snapshots contain
 the database only, including enrichments and Match overrides.
+
+## Site analytics and privacy
+
+The app records first-party, cookieless analytics in `catalogue.sqlite`: Visits,
+Searches, Zero-result searches, Filter use, sort use, Book views, errors and a
+small beacon for outbound clicks, share outcomes, filter resets and scroll depth.
+There are no cookies, no persistent identifiers and no stored IP addresses. An
+approximate daily Unique visitor hash combines the client IP and User-Agent with
+a salt that is rotated at UTC midnight and discarded; only the hash is stored.
+Searches and beacon events carry no visitor hash. App request logs redact
+`remoteAddress` and strip query strings.
+
+The app trusts `X-Forwarded-For` only when the request comes from a loopback
+reverse proxy. Tailscale Funnel and the future Cloudflare ingress must run on the
+same host (or another loopback path) and forward the real client IP in the usual
+way; direct LAN clients cannot forge a trusted client IP. Verify unique-visitor
+counts after changing the proxy topology. The public `/analytics` page shows
+aggregates only; raw Search text appears only in `npm run analytics:report`.
 
 ## Snapshot, Restore and Export
 
