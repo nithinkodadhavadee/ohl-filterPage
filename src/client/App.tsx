@@ -360,11 +360,11 @@ export function BookDetail({
               <dd>{book.onShelf}</dd>
             </div>
           </dl>
-          <p className="muted detail-sweep">
-            {sweep.hasSuccessfulSweep
-              ? `Last successful sweep ${formatDateTime(sweep.lastSuccessAt, 'unknown')}.`
-              : 'Not yet swept — Copies, Out and Holds are still the zero defaults.'}
-          </p>
+          {sweep.hasSuccessfulSweep ? (
+            <p className="muted detail-sweep">
+              Last successful sweep {formatDateTime(sweep.lastSuccessAt, 'unknown')}.
+            </p>
+          ) : null}
         </section>
 
         <section className="detail-section" aria-labelledby="detail-publication">
