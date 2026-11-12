@@ -55,6 +55,8 @@ import {
   type ViewState,
 } from './view-state';
 
+const TABLE_VIEW_ENABLED = false;
+
 function initialOf(title: string): string {
   return title.trim().charAt(0).toUpperCase() || '?';
 }
@@ -1538,24 +1540,26 @@ export function App() {
                 {catalogue?.total ?? 0}{' '}
                 {(catalogue?.total ?? 0) === 1 ? 'book' : 'books'}
               </p>
-              <div className="view-toggle" role="group" aria-label="View mode">
-                <button
-                  type="button"
-                  aria-pressed={view.view === 'grid'}
-                  onClick={() => setViewMode('grid')}
-                >
-                  Grid
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={view.view === 'table'}
-                  onClick={() => setViewMode('table')}
-                >
-                  Table
-                </button>
-              </div>
+              {TABLE_VIEW_ENABLED ? (
+                <div className="view-toggle" role="group" aria-label="View mode">
+                  <button
+                    type="button"
+                    aria-pressed={view.view === 'grid'}
+                    onClick={() => setViewMode('grid')}
+                  >
+                    Grid
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={view.view === 'table'}
+                    onClick={() => setViewMode('table')}
+                  >
+                    Table
+                  </button>
+                </div>
+              ) : null}
             </div>
-            {view.view === 'table' ? (
+            {TABLE_VIEW_ENABLED && view.view === 'table' ? (
               <BookTable books={books} onSelect={setSelected} />
             ) : (
               <ul className="book-grid">
