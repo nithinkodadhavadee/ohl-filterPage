@@ -1079,7 +1079,16 @@ export function App() {
     <div className="page">
       <header className="site-header">
         <div>
-          <p className="eyebrow">Open House Library</p>
+          <p className="eyebrow">
+            <a
+              className="eyebrow-link"
+              href="https://www.libib.com/u/openhouselibrary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open House Library
+            </a>
+          </p>
           <h1>Catalogue</h1>
         </div>
         <div className="header-status">
