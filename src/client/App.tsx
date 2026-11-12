@@ -698,6 +698,8 @@ function useStoredToggle(
   return [value, toggle];
 }
 
+const BACK_TO_TOP_SCROLL_THRESHOLD = 600;
+
 export function App() {
   const [view, setView] = useState<ViewState>(() =>
     ensureSeed(parseViewState(window.location.search)),
@@ -719,8 +721,11 @@ export function App() {
     false,
   );
   const [reloadToken, setReloadToken] = useState(0);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const [footerVisible, setFooterVisible] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
   const nextOffsetRef = useRef<number | null>(null);
   const nextOffsetQueryKeyRef = useRef<string | null>(null);
   const loadingMoreRef = useRef(false);
@@ -902,6 +907,26 @@ export function App() {
   }, [loadMore]);
 
   useEffect(() => {
+    const update = () => {
+      setShowBackToTop(window.scrollY > BACK_TO_TOP_SCROLL_THRESHOLD);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    return () => window.removeEventListener('scroll', update);
+  }, []);
+
+  useEffect(() => {
+    const footer = footerRef.current;
+    if (!footer || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver((entries) => {
+      setFooterVisible(entries.some((entry) => entry.isIntersecting));
+    });
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (selected) {
@@ -1059,6 +1084,10 @@ export function App() {
 
   const setViewMode = (next: ViewMode) => {
     if (next !== view.view) updateView({ ...view, view: next }, { push: true });
+  };
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const closeDetail = () => {
@@ -1481,7 +1510,18 @@ export function App() {
         )}
       </main>
 
-      <footer className="site-footer">
+      {showBackToTop ? (
+        <button
+          type="button"
+          className={`back-to-top${footerVisible ? ' is-lifted' : ''}`}
+          onClick={scrollToTop}
+          aria-label="Back to top"
+        >
+          <span aria-hidden="true">↑</span> Top
+        </button>
+      ) : null}
+
+      <footer ref={footerRef} className="site-footer">
         <p className="muted">Open House Library catalogue</p>
         <a href="/status">System status</a>
       </footer>
