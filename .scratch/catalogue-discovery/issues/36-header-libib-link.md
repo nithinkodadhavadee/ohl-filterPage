@@ -4,7 +4,7 @@
 
 **Blocked by:** None (pass 5)
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending end-to-end QA)
 
 - [ ] The header label links to the Libib collection page.
 - [ ] It opens in a new tab with `noopener noreferrer`.

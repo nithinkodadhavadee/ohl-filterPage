@@ -4,7 +4,7 @@
 
 **Blocked by:** None (pass 5)
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending end-to-end QA)
 
 - [ ] The checkbox is checked on a fresh load with no URL override.
 - [ ] Rating filters include low-sample ratings by default.

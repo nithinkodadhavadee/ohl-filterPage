@@ -4,7 +4,7 @@
 
 **Blocked by:** None (pass 5)
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending end-to-end QA)
 
 - [ ] The control appears after a scroll threshold and disappears near the top.
 - [ ] Activating it scrolls smoothly to the top of the catalogue.

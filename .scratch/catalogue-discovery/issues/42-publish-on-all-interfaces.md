@@ -11,7 +11,7 @@ loopback requirement.
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending end-to-end QA)
 
 **Note:** The site is read-only and has no auth; publishing on all interfaces
 means LAN and tailnet hosts can reach it directly, with firewall/network policy

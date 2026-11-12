@@ -4,7 +4,7 @@
 
 **Blocked by:** None (pass 5)
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending end-to-end QA)
 
 - [ ] The message is gone from the detail view.
 - [ ] No layout or spacing is left behind.

@@ -1,6 +1,6 @@
 # Catalogue Discovery — Status
 
-Branches (local; no remote, no PR): `feat/catalogue-discovery-v1`, `feat/catalogue-discovery-pass2`, `feat/catalogue-discovery-pass3`, `feat/catalogue-discovery-pass4`.
+Branches (local; no PR): `feat/catalogue-discovery-v1`, `feat/catalogue-discovery-pass2`, `feat/catalogue-discovery-pass3`, `feat/catalogue-discovery-pass4`, `feat/pass5`.
 
 ## v1 prototype — implemented and verified
 
@@ -60,17 +60,19 @@ Decisions: ADR-0007 (First run and scheduled scans), ADR-0008 (deployment), ADR-
 
 Verification: `typecheck`, `build`, 290 tests green. Unscheduled ideas live in `BACKLOG.md`; they are not tickets and do not enter pass planning.
 
-## Pass 5 — planned (not implemented)
+## Pass 5 — implemented (pending end-to-end QA)
 
-- [ ] 35 Back to top button
-- [ ] 36 Header link to Libib
-- [ ] 37 Sweep audit as a cumulative worklist with an attempted column — decided
-- [ ] 38 Copy-link with an HTTP-safe fallback — decided
-- [ ] 39 Remove the "Not yet swept" message
-- [ ] 40 Include low-sample ratings by default
-- [ ] 41 GitHub link, Terms page and analytics disclosure — copy needs maintainer review
-- [ ] 42 Publish on all interfaces on host port 3002 — decided; ADR-0012 supersedes ADR-0008
-- [ ] 43 Site analytics — decided; ADR-0011
+- [x] 35 Back to top button
+- [x] 36 Header link to Libib
+- [x] 37 Sweep audit as a cumulative worklist with an attempted column
+- [x] 38 Copy-link with an HTTP-safe fallback
+- [x] 39 Remove the "Not yet swept" message
+- [x] 40 Include low-sample ratings by default
+- [x] 41 GitHub link, Terms page and analytics disclosure — copy needs maintainer review
+- [x] 42 Publish on all interfaces on host port 3002 — ADR-0012 supersedes ADR-0008
+- [x] 43 Site analytics — ADR-0011
+
+Verification: `typecheck`, `build`, 337 tests green; `docker compose config` validates. End-to-end QA on the Nix server is pending. Code review findings were addressed in the local integration branch.
 
 Decisions: ADR-0011 (Site analytics), ADR-0012 (publish on all interfaces). ADR-0008 is superseded.
 

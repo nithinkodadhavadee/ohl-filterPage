@@ -25,7 +25,7 @@ tab with `rel="noopener noreferrer"`.
 
 **Blocked by:** None (pass 5)
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending maintainer copy review and end-to-end QA)
 
 **Note:** Draft the copy for maintainer review. Do not assert a licence, invent
 legal guarantees, or copy boilerplate that does not match this read-only site.

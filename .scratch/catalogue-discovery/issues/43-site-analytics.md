@@ -64,7 +64,7 @@ period with the Librarian.
 
 **Blocked by:** 41 (the Terms page must disclose analytics)
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending end-to-end QA)
 
 **Note:** Do not add a third-party analytics script, a cookie, a consent banner,
 a dashboard or an IP column. Bot classification stays a UA heuristic. The same-

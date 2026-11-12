@@ -376,9 +376,9 @@ Tickets 27, 30, 31, 32 and 34 are implemented. Dependencies were 30 → 31 and 3
 
 These entries are the decision record. Exact acceptance criteria and API/schema shapes live in the tickets; durable architectural choices live in the ADRs.
 
-## Pass 5 — Planned
+## Pass 5 — Implemented (pending end-to-end QA)
 
-Tickets 35–43. Nothing implemented. 37 and 38 are decided; 41's copy needs maintainer review; 42 moves publishing to host port 3002; 43 adds Site analytics. The rest are ready.
+Tickets 35–43 are implemented on the local `feat/pass5` branch. 37 and 38 were decided during planning; 41's copy needs maintainer review; 42 moves publishing to host port 3002; 43 adds Site analytics. Verification: `typecheck`, `build` and 337 tests green; `docker compose config` validates. End-to-end QA on the Nix server is pending.
 
 1. **Back to top button — ticket 35.** A control appears after scrolling and returns smoothly to the top.
 2. **Header links to Libib — ticket 36.** The "Open House Library" label opens `https://www.libib.com/u/openhouselibrary` in a new tab.

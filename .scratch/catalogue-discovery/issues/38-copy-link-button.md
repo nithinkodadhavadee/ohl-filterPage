@@ -9,7 +9,7 @@ silently does nothing.
 
 **Blocked by:** None (pass 5)
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending end-to-end QA)
 
 - [x] Decide whether the button is needed: keep it.
 - [ ] Copying works over both HTTP and HTTPS, with visible success/failure

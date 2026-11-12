@@ -14,7 +14,7 @@ not retained here — per-cycle history belongs to the run log. Update the
 
 **Blocked by:** None (pass 5)
 
-**Status:** ready-for-agent
+**Status:** implemented (pass 5, pending end-to-end QA)
 
 - [x] Decide the purpose of the audit and who reads it: a cumulative worklist for
       the Librarian of visible books with no successful sweep.
