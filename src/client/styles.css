@@ -1240,6 +1240,38 @@ button.badge {
   margin: 0;
 }
 
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.terms-content {
+  max-width: 68ch;
+  line-height: 1.65;
+}
+
+.terms-content section {
+  margin-bottom: 1.6rem;
+}
+
+.terms-content h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.2rem;
+}
+
+.terms-content p {
+  margin: 0 0 0.8rem;
+  overflow-wrap: break-word;
+}
+
+.terms-content a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .site-footer a,
 .back-link {
   color: var(--accent);

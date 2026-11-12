@@ -7,6 +7,7 @@ import type {
 } from '../shared/run-log';
 import { fetchRunHistory, fetchStatus } from './api';
 import { formatDateTime } from './format';
+import { SiteFooter } from './SiteFooter';
 import {
   RUN_HISTORY_PAGE_SIZE,
   STATUS_SECTIONS,
@@ -429,10 +430,7 @@ export function StatusPage() {
         ))}
       </main>
 
-      <footer className="site-footer">
-        <p className="muted">Open House Library</p>
-        <a href="/">Catalogue</a>
-      </footer>
+      <SiteFooter label="Open House Library" />
     </div>
   );
 }
