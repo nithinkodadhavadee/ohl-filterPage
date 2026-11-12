@@ -15,6 +15,7 @@ export interface AppConfig {
   catalogueScanIntervalMs: number;
   snapshotsDir: string;
   snapshotRetain: number;
+  analyticsRetentionDays: number;
 }
 
 export interface ConfigOverrides {
@@ -25,6 +26,7 @@ export interface ConfigOverrides {
   enrichmentCooldownMs?: number;
   catalogueScanIntervalMs?: number;
   snapshotRetain?: number;
+  analyticsRetentionDays?: number;
 }
 
 const DEFAULT_HOST = '127.0.0.1';
@@ -36,6 +38,7 @@ const DEFAULT_MAX_BACKOFF_SECONDS = 900;
 const DEFAULT_ENRICHMENT_COOLDOWN_SECONDS = 3600;
 const DEFAULT_CATALOGUE_SCAN_INTERVAL_SECONDS = 86400;
 const DEFAULT_SNAPSHOT_RETAIN = 10;
+const DEFAULT_ANALYTICS_RETENTION_DAYS = 0;
 
 export const DEFAULT_CRAWLER_CYCLE_DELAY_MS =
   DEFAULT_CYCLE_DELAY_SECONDS * 1000;
@@ -72,6 +75,15 @@ function parsePositiveInteger(
   if (value === undefined || value.trim() === '') return fallback;
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
+  if (value === undefined || value.trim() === '') return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function parseSeconds(value: string | undefined, fallback: number): number {
@@ -129,6 +141,12 @@ export function loadConfig(overrides: ConfigOverrides = {}): AppConfig {
       parsePositiveInteger(
         process.env.SNAPSHOT_RETAIN,
         DEFAULT_SNAPSHOT_RETAIN,
+      ),
+    analyticsRetentionDays:
+      overrides.analyticsRetentionDays ??
+      parseNonNegativeInteger(
+        process.env.ANALYTICS_RETENTION_DAYS,
+        DEFAULT_ANALYTICS_RETENTION_DAYS,
       ),
   };
 }

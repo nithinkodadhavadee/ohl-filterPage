@@ -9,6 +9,7 @@ import {
   type RunHistoryPage,
   type RunKind,
 } from '../shared/run-log';
+import type { AnalyticsSummary } from '../shared/analytics';
 import type { StatusResponse } from './types';
 
 export async function fetchBooks(query: BooksQuery = {}): Promise<BooksResponse> {
@@ -55,6 +56,14 @@ export async function fetchFacets(): Promise<FacetsResponse> {
     throw new Error(`Could not load filters (${response.status})`);
   }
   return (await response.json()) as FacetsResponse;
+}
+
+export async function fetchAnalyticsSummary(): Promise<AnalyticsSummary> {
+  const response = await fetch('/api/analytics/summary');
+  if (!response.ok) {
+    throw new Error(`Could not load analytics (${response.status})`);
+  }
+  return (await response.json()) as AnalyticsSummary;
 }
 
 export async function fetchStatus(): Promise<StatusResponse> {

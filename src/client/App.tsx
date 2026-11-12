@@ -31,6 +31,12 @@ import {
   subjectFacetSummary,
   writeStoredBoolean,
 } from './filter-ui';
+import {
+  trackFilterReset,
+  trackOutbound,
+  trackScroll,
+  trackShare,
+} from './analytics';
 import { formatDateTime } from './format';
 import { appendCataloguePage } from './paging';
 import { SiteFooter } from './SiteFooter';
@@ -372,6 +378,7 @@ export function BookDetail({
   const copyLink = async () => {
     const copied = await copyText(permalink);
     setCopyStatus(copied ? 'copied' : 'failed');
+    trackShare(copied ? 'success' : 'failure');
   };
 
   return (
@@ -533,6 +540,7 @@ export function BookDetail({
               href={book.libibUrl}
               target="_blank"
               rel="noreferrer"
+              onClick={() => trackOutbound('libib')}
             >
               View on Libib
             </a>
@@ -742,7 +750,8 @@ function bookPermalink(view: ViewState, joinId: string): string {
 }
 
 function readBookParam(search: string): string | null {
-  const value = new URLSearchParams(search).get('book')?.trim();
+  const params = new URLSearchParams(search);
+  const value = (params.get('book') ?? params.get('solo'))?.trim();
   return value ? value : null;
 }
 
@@ -994,6 +1003,34 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!selected) return;
+    const sent = new Set<number>();
+    const record = () => {
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      if (scrollable <= 0) {
+        if (!sent.has(100)) {
+          sent.add(100);
+          trackScroll(100);
+        }
+        return;
+      }
+      const percent = Math.min(
+        100,
+        Math.max(0, (window.scrollY / scrollable) * 100),
+      );
+      for (const quartile of [25, 50, 75, 100] as const) {
+        if (percent >= quartile && !sent.has(quartile)) {
+          sent.add(quartile);
+          trackScroll(quartile);
+        }
+      }
+    };
+    window.addEventListener('scroll', record, { passive: true });
+    record();
+    return () => window.removeEventListener('scroll', record);
+  }, [selected?.joinId]);
+
+  useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (selected) {
@@ -1131,6 +1168,7 @@ export function App() {
   };
 
   const clearFilters = () => {
+    trackFilterReset();
     updateView(
       {
         ...view,
@@ -1181,6 +1219,7 @@ export function App() {
               href="https://www.libib.com/u/openhouselibrary"
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => trackOutbound('libib')}
             >
               Open House Library
             </a>

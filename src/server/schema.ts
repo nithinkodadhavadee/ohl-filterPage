@@ -75,6 +75,32 @@ CREATE TABLE IF NOT EXISTS run_log (
   note TEXT
 );
 
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  day TEXT NOT NULL,
+  visitor_hash TEXT,
+  is_bot INTEGER NOT NULL DEFAULT 0,
+  device TEXT,
+  browser TEXT,
+  os TEXT,
+  referrer_host TEXT,
+  path TEXT,
+  status_code INTEGER,
+  query TEXT,
+  filters TEXT,
+  sort TEXT,
+  result_count INTEGER,
+  zero_results INTEGER NOT NULL DEFAULT 0,
+  detail TEXT
+);
+
+CREATE TABLE IF NOT EXISTS analytics_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS books_fts USING fts5(
   join_id UNINDEXED,
   title,
@@ -89,4 +115,10 @@ CREATE INDEX IF NOT EXISTS idx_run_log_kind_started_at
   ON run_log(kind, started_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_book_sweep_ledger_success
   ON book_sweep_ledger(last_success_at);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_time
+  ON analytics_events(occurred_at);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_kind_time
+  ON analytics_events(kind, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_day
+  ON analytics_events(day);
 `;

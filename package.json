@@ -25,6 +25,7 @@
     "snapshot": "node scripts/run-cli.mjs src/server/snapshot-cli.ts dist/server/snapshot-cli.js snapshot",
     "restore": "node scripts/run-cli.mjs src/server/snapshot-cli.ts dist/server/snapshot-cli.js restore",
     "export": "node scripts/run-cli.mjs src/server/snapshot-cli.ts dist/server/snapshot-cli.js export",
+    "analytics:report": "node scripts/run-cli.mjs src/server/analytics-cli.ts dist/server/analytics-cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.json --noEmit"
