@@ -214,8 +214,8 @@ Compiles the server and builds the frontend into `dist/`.
 ### `npm start`
 
 Serves the built app on `PORT`, binding to `HOST` (`127.0.0.1` by default). The
-deployment shape sets `HOST=0.0.0.0` inside the container and publishes only the
-loopback port on the host.
+deployment shape sets `HOST=0.0.0.0` inside the container and publishes the
+container's port `3000` on all host interfaces at port `3002`.
 
 ### `npm test`
 
@@ -322,9 +322,11 @@ books, enrichments and Match overrides survive a Restore.
 The service runs as one container. The image carries the application and the
 development fixtures needed by `seed`, but no catalogue database, cached covers
 or snapshots; those live in a host directory bind-mounted at `/data`. The
-container serves plain HTTP on a loopback-published port. TLS and public routing
-belong to a host-run Tailscale Funnel or Cloudflare Tunnel, never to the
-container.
+container serves plain HTTP on all interfaces at host port `3002`, mapped to
+container port `3000`. TLS and public routing belong to a host-run Tailscale
+Funnel or Cloudflare Tunnel, never to the container. This is the deployment
+shape recorded in [ADR-0012](adr/0012-publish-on-all-interfaces.md), which
+supersedes ADR-0008's loopback binding.
 
 ### Build and run with Docker
 
@@ -335,7 +337,7 @@ sudo chown -R 10001:10001 data
 docker run -d \
   --name open-house-library-discovery \
   --restart unless-stopped \
-  -p 127.0.0.1:3000:3000 \
+  -p 0.0.0.0:3002:3000 \
   -v "$PWD/data:/data" \
   -e HOST=0.0.0.0 \
   open-house-library-discovery
@@ -345,7 +347,7 @@ The image runs as fixed UID/GID `10001`. On Linux the bind-mounted host
 directory must be writable by that UID; the `chown` above prepares it. On Docker
 Desktop for macOS the mount is shared automatically. `HOST=0.0.0.0` is required
 inside the container so the published port can reach the process; the host
-publication stays on `127.0.0.1`.
+publication is also on all interfaces, at `3002`.
 
 ### Docker Compose
 
@@ -357,10 +359,10 @@ sudo chown -R 10001:10001 data
 docker compose up -d --build
 docker compose ps
 docker compose logs -f app
-curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:3002/health
 ```
 
-It publishes `127.0.0.1:3000:3000`, binds `${DATA_DIR:-./data}` to `/data`, sets
+It publishes `0.0.0.0:3002:3000`, binds `${DATA_DIR:-./data}` to `/data`, sets
 `restart: unless-stopped`, and passes every operational environment variable
 through with a default. Stopping the container or replacing the image keeps the
 volume; deleting `data/` or the `DATA_DIR` directory is the only way to lose
@@ -391,8 +393,9 @@ chooses the bind-mount source.
 `SAMPLE_SIZE` defaults to `0` (the whole visible Collection) in Compose. Keep it
 out of `.env` unless you deliberately want a capped Crawl set in production.
 
-`PORT` is fixed at `3000` inside the container and in the published mapping. To
-move it, change both sides of `ports` and keep them equal.
+`PORT` is fixed at `3000` inside the container. Compose maps host port `3002` to
+it, so change only the host side of `ports` to move the published port; changing
+the container `PORT` would also require the healthcheck to follow.
 
 ### First run and catch-up
 
@@ -501,23 +504,23 @@ upgrade.
 
 ### Tailscale Funnel
 
-The container publishes plain HTTP on `127.0.0.1:3000`, so the host can expose it
-without certificates:
+The container publishes plain HTTP on all interfaces at host port `3002`, so the
+host can expose it without certificates:
 
 ```sh
-sudo tailscale funnel --bg 3000
+sudo tailscale funnel --bg 3002
 tailscale funnel status
 ```
 
 Funnel serves `https://<machine>.<tailnet>.ts.net/` and proxies to
-`http://127.0.0.1:3000`; Cloudflare is not required. Funnel is public internet.
-For tailnet-only access, use `sudo tailscale serve --bg 3000` instead. See the
+`http://127.0.0.1:3002`; Cloudflare is not required. Funnel is public internet.
+For tailnet-only access, use `sudo tailscale serve --bg 3002` instead. See the
 [exposure section of the Docker guide](docker.md#exposing-the-site).
 
 ### Cloudflare Tunnel ingress
 
 Run one `cloudflared` process on the host, shared by every project. Point the
-site's hostname at the loopback publication:
+site's hostname at the published host port `3002`:
 
 ```yaml
 tunnel: 00000000-0000-0000-0000-000000000000
@@ -525,12 +528,13 @@ credentials-file: /etc/cloudflared/00000000-0000-0000-0000-000000000000.json
 
 ingress:
   - hostname: catalogue.example.org
-    service: http://localhost:3000
+    service: http://localhost:3002
   - service: http_status:404
 ```
 
 Create the DNS route once with
 `cloudflared tunnel route dns <tunnel-name> catalogue.example.org`, then run
 `cloudflared tunnel run <tunnel-name>`. Cloudflare terminates TLS, so neither
-the image nor Compose handles certificates. Because the published port is bound
-to `127.0.0.1`, the origin is reachable only through the tunnel.
+the image nor Compose handles certificates. The origin is published on all
+interfaces at `3002`, so the LAN and tailnet can also reach it directly; network
+and firewall policy is the boundary.
