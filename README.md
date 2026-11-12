@@ -69,10 +69,15 @@ cp .env.example .env            # keep SAMPLE_SIZE=0 (whole catalogue)
 # optional: set DATA_DIR to an absolute host path in .env
 docker compose up -d --build
 docker compose ps
-curl -s http://127.0.0.1:3000/health
+curl -s http://127.0.0.1:3002/health
 ```
 
-Open <http://localhost:3000>; the status page is at `/status`. The full Docker
+Open <http://localhost:3002>; the status page is at `/status`. The container
+listens on port `3000` and Compose publishes it on all interfaces at host port
+`3002`, so the site is also reachable from the LAN and tailnet. A host-run
+reverse proxy (Tailscale Funnel now, Cloudflare later) targets port `3002`; see
+[ADR-0012](docs/adr/0012-publish-on-all-interfaces.md), which supersedes
+ADR-0008's loopback binding. The full Docker
 guide, including data migration, Snapshots, Restore and Tailscale Funnel, is in
 [docs/docker.md](docs/docker.md).
 

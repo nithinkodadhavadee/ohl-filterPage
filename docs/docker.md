@@ -53,10 +53,10 @@ cp .env.example .env            # then set DATA_DIR if needed
 docker compose up -d --build
 docker compose ps               # wait for (healthy)
 docker compose logs -f app
-curl -s http://127.0.0.1:3000/health
+curl -s http://127.0.0.1:3002/health
 ```
 
-Open <http://127.0.0.1:3000> and <http://127.0.0.1:3000/status>.
+Open <http://127.0.0.1:3002> and <http://127.0.0.1:3002/status>.
 
 The first build can take a few minutes. There is no `down` needed before an
 upgrade; `up -d --build` rebuilds the image, gracefully stops and recreates the
@@ -191,7 +191,7 @@ rsync -a "$DATA_DIR/covers/" new-host:/srv/open-house-library/data/covers/
 # 4. on the new host, fix ownership, start, and check health
 sudo chown -R 10001:10001 /srv/open-house-library/data
 docker compose up -d --build
-curl -s http://127.0.0.1:3000/health
+curl -s http://127.0.0.1:3002/health
 ```
 
 Do not copy `server.lock`. If covers are omitted, the first Catalogue scan
@@ -199,31 +199,36 @@ re-downloads missing files.
 
 ## Exposing the site
 
+Compose publishes plain HTTP on all interfaces at host port `3002`; the
+container listens on `3000` internally. This is the deployment shape recorded in
+[ADR-0012](adr/0012-publish-on-all-interfaces.md), which supersedes ADR-0008's
+loopback binding. Because the origin is bound to `0.0.0.0`, the LAN and tailnet
+can reach port `3002` directly; network and firewall policy is the boundary.
+
 ### Tailscale Funnel (public)
 
-The container publishes plain HTTP on `127.0.0.1:3000`, which is exactly what a
-host-run Tailscale instance needs.
+A host-run Tailscale instance proxies to the published host port `3002`:
 
 ```sh
-sudo tailscale funnel --bg 3000
+sudo tailscale funnel --bg 3002
 tailscale funnel status
 ```
 
 Funnel serves HTTPS on `https://<machine>.<tailnet>.ts.net/` and proxies to
-`http://127.0.0.1:3000`. Tailscale terminates TLS; the container never handles
+`http://127.0.0.1:3002`. Tailscale terminates TLS; the container never handles
 certificates.
 
 - Funnel must be enabled for the tailnet, and HTTPS certificates must be enabled.
 - **Funnel is public internet**, not tailnet-only. This site is read-only and has
   no auth.
-- For tailnet-only access, use `sudo tailscale serve --bg 3000` instead of
+- For tailnet-only access, use `sudo tailscale serve --bg 3002` instead of
   `tailscale funnel`.
 - Stop sharing with `sudo tailscale funnel --bg off` (or `tailscale funnel reset`).
 
 ### Cloudflare Tunnel (later)
 
 A single host-run `cloudflared` can serve several projects. Point a hostname at
-`http://localhost:3000` with an ingress rule. Do not run a per-project
+`http://localhost:3002` with an ingress rule. Do not run a per-project
 cloudflared container. See the Cloudflare section in
 [operations.md](operations.md#cloudflare-tunnel-ingress).
 
@@ -236,13 +241,13 @@ check; a hard database or crawler error does.
 
 ```sh
 docker compose ps
-curl -s http://127.0.0.1:3000/health
+curl -s http://127.0.0.1:3002/health
 ```
 
 ## Troubleshooting
 
-- **Port 3000 already in use:** stop the local dev server or change both sides
-  of `ports` and `PORT`.
+- **Host port 3002 already in use:** stop whatever holds it or change the host
+  side of the `ports` mapping. The container's `PORT` stays `3000`.
 - **Permission denied writing `/data`:** on Linux,
   `sudo chown -R 10001:10001 "$DATA_DIR"`. On macOS, use a shared path such as
   under your home directory.
@@ -260,15 +265,18 @@ curl -s http://127.0.0.1:3000/health
 
 ## Local LAN testing
 
-The committed Compose file publishes on loopback only. To test from a phone on
-the same Wi-Fi, create a git-ignored `docker-compose.override.yml`:
+Publishing on all interfaces is the committed default, so a phone on the same
+Wi-Fi can reach the site directly at `http://<host-lan-address>:3002` with no
+extra configuration. The container still listens on `3000`; `3002` is only the
+host port.
 
-```yaml
-services:
-  app:
-    ports: !override
-      - "0.0.0.0:3000:3000"
+No `docker-compose.override.yml` is needed. If one exists from an earlier setup
+it can pin the old mapping and mask the default, so update or remove it. The
+site is read-only and has no auth, so expose it only on networks you trust and
+let firewall policy be the boundary.
+
+Verify from another machine on the LAN or tailnet:
+
+```sh
+curl -s http://<host-lan-address>:3002/health
 ```
-
-Then `docker compose up -d`. Do not deploy that override to the server; Funnel
-and Cloudflare use the loopback publication.
