@@ -83,6 +83,26 @@ code {
   text-transform: uppercase;
 }
 
+.eyebrow-link {
+  display: inline-block;
+  padding: 0.35rem 0.2rem;
+  margin: -0.35rem -0.2rem;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.eyebrow-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.eyebrow-link:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 h1 {
   margin: 0.15rem 0 0;
   font-size: clamp(1.8rem, 5vw, 2.6rem);
