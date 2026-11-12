@@ -258,7 +258,7 @@ The pre-Pass 3 names are removed, not aliased: `index` became
 | `ENRICH_COOLDOWN_SECONDS`         | `3600`                                    | Skip a startup Enrichment pass completed within this window.            |
 | `CATALOGUE_SCAN_INTERVAL_SECONDS` | `86400`                                   | Scheduled catalogue scan interval; `0` disables it.                     |
 | `SNAPSHOT_RETAIN`                 | `10`                                      | Number of recent snapshots kept after a Snapshot.                       |
-| `ANALYTICS_RETENTION_DAYS`        | `0` (keep forever)                        | Delete raw analytics events older than this many days on startup; aggregates are unaffected because they are computed from raw rows. |
+| `ANALYTICS_RETENTION_DAYS`        | `0` (keep forever)                        | Roll raw analytics events older than this many days into daily aggregates on startup, then delete the raw rows. Aggregates and reports remain valid; raw Search text older than the window is gone. |
 | `CRAWLER_MAX_BACKOFF_SECONDS`     | `900`                                     | Upper bound for 403/429 backoff.                                        |
 | `LIBIB_REQUEST_DELAY_MS`          | `1000` (detail fallback `2000`)           | Delay between Libib index requests; also the fallback for enrichment and detail pacing. |
 | `ENRICH_REQUEST_DELAY_MS`         | `1000`                                    | Delay between enrichment requests; falls back to `LIBIB_REQUEST_DELAY_MS`. |
@@ -309,7 +309,11 @@ There are no cookies, no persistent identifiers and no stored IP addresses. An
 approximate daily Unique visitor hash combines the client IP and User-Agent with
 a salt that is rotated at UTC midnight and discarded; only the hash is stored.
 Searches and beacon events carry no visitor hash. App request logs redact
-`remoteAddress` and strip query strings.
+`remoteAddress` and strip query strings. When `ANALYTICS_RETENTION_DAYS` is
+positive, startup rolls raw events older than the window into daily aggregate
+rows before deleting them, so page views, uniques, devices, referrers,
+most-viewed books and event totals stay valid; only raw Search text older than
+the window is removed.
 
 The app trusts `X-Forwarded-For` only when the request comes from a loopback
 reverse proxy. Tailscale Funnel and the future Cloudflare ingress must run on the

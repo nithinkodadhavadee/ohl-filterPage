@@ -1,8 +1,9 @@
-import type {
-  AnalyticsBeaconEvent,
-  OutboundDestination,
-  ScrollQuartile,
-  ShareOutcome,
+import {
+  SCROLL_QUARTILES,
+  type AnalyticsBeaconEvent,
+  type OutboundDestination,
+  type ScrollQuartile,
+  type ShareOutcome,
 } from '../shared/analytics';
 
 const ENDPOINT = '/api/analytics/event';
@@ -23,7 +24,6 @@ function send(event: AnalyticsBeaconEvent): void {
       );
       if (sent) return;
     } catch {
-      // Fall through to fetch keepalive.
     }
   }
 
@@ -33,24 +33,36 @@ function send(event: AnalyticsBeaconEvent): void {
       headers: { 'content-type': 'application/json' },
       body,
       keepalive: true,
-    }).catch(() => {
-      // Analytics must never interfere with the page.
-    });
+    }).catch(() => undefined);
   }
 }
 
-export function trackOutbound(destination: OutboundDestination): void {
+export function bookViewScrollPercent(
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+): number | null {
+  const scrollable = scrollHeight - clientHeight;
+  if (scrollable <= 0) return null;
+  return Math.min(100, Math.max(0, (scrollTop / scrollable) * 100));
+}
+
+export function scrollQuartilesReached(percent: number): ScrollQuartile[] {
+  return SCROLL_QUARTILES.filter((quartile) => percent >= quartile);
+}
+
+export function recordOutboundClick(destination: OutboundDestination): void {
   send({ event: 'outbound', destination });
 }
 
-export function trackShare(result: ShareOutcome): void {
+export function recordShare(result: ShareOutcome): void {
   send({ event: 'share', result });
 }
 
-export function trackFilterReset(): void {
+export function recordFilterReset(): void {
   send({ event: 'filter_reset' });
 }
 
-export function trackScroll(quartile: ScrollQuartile): void {
+export function recordScroll(quartile: ScrollQuartile): void {
   send({ event: 'scroll', quartile });
 }

@@ -32,10 +32,12 @@ import {
   writeStoredBoolean,
 } from './filter-ui';
 import {
-  trackFilterReset,
-  trackOutbound,
-  trackScroll,
-  trackShare,
+  bookViewScrollPercent,
+  recordFilterReset,
+  recordOutboundClick,
+  recordScroll,
+  recordShare,
+  scrollQuartilesReached,
 } from './analytics';
 import { formatDateTime } from './format';
 import { appendCataloguePage } from './paging';
@@ -378,7 +380,7 @@ export function BookDetail({
   const copyLink = async () => {
     const copied = await copyText(permalink);
     setCopyStatus(copied ? 'copied' : 'failed');
-    trackShare(copied ? 'success' : 'failure');
+    recordShare(copied ? 'success' : 'failure');
   };
 
   return (
@@ -540,7 +542,7 @@ export function BookDetail({
               href={book.libibUrl}
               target="_blank"
               rel="noreferrer"
-              onClick={() => trackOutbound('libib')}
+              onClick={() => recordOutboundClick('libib')}
             >
               View on Libib
             </a>
@@ -1003,31 +1005,24 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!selected) return;
+    const dialog = dialogRef.current;
+    if (!dialog || !selected) return;
     const sent = new Set<number>();
     const record = () => {
-      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
-      if (scrollable <= 0) {
-        if (!sent.has(100)) {
-          sent.add(100);
-          trackScroll(100);
-        }
-        return;
-      }
-      const percent = Math.min(
-        100,
-        Math.max(0, (window.scrollY / scrollable) * 100),
+      const percent = bookViewScrollPercent(
+        dialog.scrollTop,
+        dialog.scrollHeight,
+        dialog.clientHeight,
       );
-      for (const quartile of [25, 50, 75, 100] as const) {
-        if (percent >= quartile && !sent.has(quartile)) {
-          sent.add(quartile);
-          trackScroll(quartile);
-        }
+      if (percent === null) return;
+      for (const quartile of scrollQuartilesReached(percent)) {
+        if (sent.has(quartile)) continue;
+        sent.add(quartile);
+        recordScroll(quartile);
       }
     };
-    window.addEventListener('scroll', record, { passive: true });
-    record();
-    return () => window.removeEventListener('scroll', record);
+    dialog.addEventListener('scroll', record, { passive: true });
+    return () => dialog.removeEventListener('scroll', record);
   }, [selected?.joinId]);
 
   useEffect(() => {
@@ -1168,7 +1163,7 @@ export function App() {
   };
 
   const clearFilters = () => {
-    trackFilterReset();
+    recordFilterReset();
     updateView(
       {
         ...view,
@@ -1219,7 +1214,7 @@ export function App() {
               href="https://www.libib.com/u/openhouselibrary"
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => trackOutbound('libib')}
+              onClick={() => recordOutboundClick('libib')}
             >
               Open House Library
             </a>

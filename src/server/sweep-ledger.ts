@@ -13,10 +13,6 @@ export interface RecordSweepInput {
   reason?: string | null;
 }
 
-// The sweep audit is a cumulative worklist of visible books that have no
-// successful sweep yet, ordered by title. The ledger stores the latest attempt
-// per book, so rows describe that attempt rather than a history of cycles;
-// per-cycle history lives in the run log.
 export interface SweepAuditRow {
   joinId: string;
   title: string;

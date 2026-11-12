@@ -8,6 +8,7 @@ import {
   isBotUserAgent,
   parseUserAgent,
   purgeExpiredAnalytics,
+  readAnalyticsReport,
   readAnalyticsSummary,
   recordAnalyticsEvent,
   utcDay,
@@ -179,10 +180,106 @@ describe('retention purge', () => {
     expect(readAnalyticsSummary(db, now).pageViews.total).toBe(1);
   });
 
-  it('deletes events older than the retention window', () => {
+  it('deletes raw events older than the retention window without losing totals', () => {
     eventDaysAgo(10);
     eventDaysAgo(1);
     expect(purgeExpiredAnalytics(db, 5, now)).toBe(1);
-    expect(readAnalyticsSummary(db, now).pageViews.total).toBe(1);
+    expect(readAnalyticsSummary(db, now).pageViews.total).toBe(2);
+  });
+
+  it('rolls daily aggregates up before purging raw events', () => {
+    const old = '2026-01-10T10:00:00.000Z';
+    recordAnalyticsEvent(db, {
+      kind: 'visit',
+      occurredAt: old,
+      visitorHash: 'a'.repeat(64),
+      device: 'desktop',
+      browser: 'Chrome',
+      os: 'macOS',
+      referrerHost: 'example.com',
+      path: '/',
+    });
+    recordAnalyticsEvent(db, {
+      kind: 'visit',
+      occurredAt: old,
+      visitorHash: 'b'.repeat(64),
+      device: 'mobile',
+      browser: 'Safari',
+      os: 'iOS',
+      referrerHost: 'example.com',
+      path: '/status',
+    });
+    recordAnalyticsEvent(db, {
+      kind: 'book_view',
+      occurredAt: old,
+      detail: 'book-1',
+    });
+    recordAnalyticsEvent(db, {
+      kind: 'search',
+      occurredAt: old,
+      query: 'old query',
+      resultCount: 0,
+      zeroResults: true,
+    });
+    recordAnalyticsEvent(db, {
+      kind: 'filter',
+      occurredAt: old,
+      filters: '{"availableOnly":true}',
+    });
+    recordAnalyticsEvent(db, {
+      kind: 'outbound',
+      occurredAt: old,
+      detail: 'libib',
+    });
+    recordAnalyticsEvent(db, {
+      kind: 'visit',
+      occurredAt: '2026-01-31T10:00:00.000Z',
+      visitorHash: 'c'.repeat(64),
+      device: 'desktop',
+      browser: 'Firefox',
+      os: 'Linux',
+      path: '/',
+    });
+
+    expect(purgeExpiredAnalytics(db, 5, new Date('2026-02-01T00:00:00.000Z'))).toBe(6);
+    const remaining = db
+      .prepare('SELECT COUNT(*) AS count FROM analytics_events')
+      .get() as unknown as { count: number };
+    expect(remaining.count).toBe(1);
+
+    const summary = readAnalyticsSummary(db, now);
+    expect(summary.pageViews.total).toBe(3);
+    expect(summary.humans).toBe(3);
+    expect(summary.devices).toContainEqual({ label: 'desktop', count: 2 });
+    expect(summary.devices).toContainEqual({ label: 'mobile', count: 1 });
+    expect(summary.referrers).toContainEqual({
+      label: 'example.com',
+      count: 2,
+    });
+    expect(summary.mostViewedBooks).toEqual([
+      { joinId: 'book-1', title: 'book-1', views: 1 },
+    ]);
+    expect(summary.searches).toEqual({ total: 1, zeroResults: 1 });
+    expect(summary.events).toContainEqual({ label: 'outbound', count: 1 });
+    expect(summary.events).toContainEqual({ label: 'filter', count: 1 });
+    expect(summary.daily).toContainEqual({
+      day: '2026-01-10',
+      visits: 2,
+      uniqueVisitors: 2,
+      bots: 0,
+    });
+
+    const report = readAnalyticsReport(
+      db,
+      { since: '2026-01-01', until: '2026-01-20' },
+      now,
+    );
+    expect(report.totalEvents).toBe(6);
+    expect(report.visits).toBe(2);
+    expect(report.mostViewedBooks[0]).toMatchObject({
+      joinId: 'book-1',
+      views: 1,
+    });
+    expect(report.outbound).toEqual([{ label: 'libib', count: 1 }]);
   });
 });
