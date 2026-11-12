@@ -68,6 +68,7 @@ export function parseViewState(search: string): ViewState {
     ),
   ];
   const unmatched = normalizeUnmatchedFilter(params.get('unmatched'));
+  const rawIncludeLowSample = params.get('include_low_sample');
 
   return {
     q,
@@ -82,8 +83,7 @@ export function parseViewState(search: string): ViewState {
       params.get('available') === '1' || params.get('available') === 'true',
     ratingMin: params.get('rating_min') ?? '',
     includeLowSample:
-      params.get('include_low_sample') === '1' ||
-      params.get('include_low_sample') === 'true',
+      rawIncludeLowSample !== '0' && rawIncludeLowSample !== 'false',
     pagesMin: params.get('pages_min') ?? '',
     pagesMax: params.get('pages_max') ?? '',
     unmatched,
@@ -99,7 +99,7 @@ export function activeFilterCount(view: ViewState): number {
     view.holds.length +
     (view.availableOnly ? 1 : 0) +
     (view.ratingMin.trim() ? 1 : 0) +
-    (view.includeLowSample ? 1 : 0) +
+    (view.includeLowSample ? 0 : 1) +
     (view.pagesMin.trim() ? 1 : 0) +
     (view.pagesMax.trim() ? 1 : 0) +
     (view.unmatched !== 'all' ? 1 : 0)
@@ -128,7 +128,7 @@ export function viewToUrl(
   for (const bucket of view.holds) params.append('holds', bucket);
   if (view.availableOnly) params.set('available', '1');
   if (view.ratingMin.trim()) params.set('rating_min', view.ratingMin.trim());
-  if (view.includeLowSample) params.set('include_low_sample', '1');
+  if (!view.includeLowSample) params.set('include_low_sample', '0');
   if (view.pagesMin.trim()) params.set('pages_min', view.pagesMin.trim());
   if (view.pagesMax.trim()) params.set('pages_max', view.pagesMax.trim());
   if (view.unmatched !== 'all') params.set('unmatched', view.unmatched);

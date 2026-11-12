@@ -1048,7 +1048,7 @@ export function App() {
         holds: [],
         availableOnly: false,
         ratingMin: '',
-        includeLowSample: false,
+        includeLowSample: true,
         pagesMin: '',
         pagesMax: '',
         unmatched: 'all',
