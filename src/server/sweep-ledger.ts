@@ -13,10 +13,15 @@ export interface RecordSweepInput {
   reason?: string | null;
 }
 
+// The sweep audit is a cumulative worklist of visible books that have no
+// successful sweep yet, ordered by title. The ledger stores the latest attempt
+// per book, so rows describe that attempt rather than a history of cycles;
+// per-cycle history lives in the run log.
 export interface SweepAuditRow {
   joinId: string;
   title: string;
   author: string | null;
+  attempted: boolean;
   lastAttemptAt: string | null;
   outcome: SweepOutcome | null;
   reason: string | null;
@@ -109,6 +114,15 @@ export function getSweepLedgers(
   return map;
 }
 
+interface SweepAuditQueryRow {
+  joinId: string;
+  title: string;
+  author: string | null;
+  lastAttemptAt: string | null;
+  outcome: SweepOutcome | null;
+  reason: string | null;
+}
+
 export function listBooksWithoutSuccessfulSweep(
   db: DatabaseSync,
 ): SweepAuditRow[] {
@@ -127,9 +141,12 @@ export function listBooksWithoutSuccessfulSweep(
         AND l.last_success_at IS NULL
       ORDER BY b.title COLLATE NOCASE, b.join_id
     `)
-    .all() as unknown as SweepAuditRow[];
+    .all() as unknown as SweepAuditQueryRow[];
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    attempted: row.lastAttemptAt !== null,
+  }));
 }
 
 export function getSweepAudit(db: DatabaseSync): SweepAuditExport {
@@ -144,6 +161,7 @@ export function getSweepAuditCsv(db: DatabaseSync): SweepAuditCsv {
       'join_id',
       'title',
       'author',
+      'attempted',
       'last_attempt_at',
       'outcome',
       'reason',
@@ -153,6 +171,7 @@ export function getSweepAuditCsv(db: DatabaseSync): SweepAuditCsv {
         book.joinId,
         book.title,
         book.author ?? '',
+        book.attempted ? 'yes' : 'no',
         book.lastAttemptAt ?? '',
         book.outcome ?? '',
         book.reason ?? '',
